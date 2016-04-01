@@ -5,19 +5,14 @@ import sys, os
 import pickle
 import datetime
 import subprocess
-
 import numpy as np
 
 
 """
-    Stacker loads every image in the "aligned"
-    directory and stacks it. Output to RESULT_DIRECTORY
+    Stacker loads every image in INPUT_DIRECTORY,
+    stacks it and writes output to RESULT_DIRECTORY.
 
     Do not run with pypy! (Saving image is 30-40s slower)
-
-    numpy for pypy
-    pypy -m pip install git+https://bitbucket.org/pypy/numpy.git
-
 
     TODO:
     =====
@@ -33,6 +28,8 @@ import numpy as np
 
     * openCV 3      reading and writing images
     * gexiv2        writing EXIF data
+    -   pyexif2
+    *
 
 """
 
@@ -50,7 +47,7 @@ def stop_time(msg=None):
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
 PICKLE_NAME         = "stack.pickle"
-DIRECTORY           = "images"
+INPUT_DIRECTORY     = "images"
 RESULT_DIRECTORY    = "stack"
 DIMENSIONS          = (4896, 3264) #(5184, 3136) #(1200, 545)
 
@@ -159,6 +156,8 @@ if info["label"][-1] == "\n":
 print info
 #sys.exit(0)
 
+# TODO: write metadata
+
 # load pickle and init variables
 try:
     pick = pickle.load(open(PICKLE_NAME, "rb"))
@@ -171,13 +170,13 @@ except Exception as e:
 stop_time("pickle loading: {}s")
 
 # get all file names
-for root, dirs, files in os.walk(DIRECTORY):
+for root, dirs, files in os.walk(INPUT_DIRECTORY):
     for f in files:
 
         if f == ".DS_Store":
             continue
 
-        if os.path.getsize(os.path.join(DIRECTORY, f)) < 100:
+        if os.path.getsize(os.path.join(INPUT_DIRECTORY, f)) < 100:
             continue
 
         crops.append(f)
@@ -195,7 +194,7 @@ for f in crops:
         continue
 
     # 3: read input as 16bit color TIFF
-    im = cv2.imread(os.path.join(DIRECTORY, f), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
+    im = cv2.imread(os.path.join(INPUT_DIRECTORY, f), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
 
     #data = np.array(im, np.int) # 100ms slower per image
     data = np.asarray(im, np.uint64)
