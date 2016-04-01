@@ -7,6 +7,9 @@ import datetime
 import subprocess
 import numpy as np
 
+import pyexiv2
+from fractions import Fraction
+
 
 """
     Stacker loads every image in INPUT_DIRECTORY,
@@ -98,6 +101,8 @@ def save():
     timediff = endtime - timer
     timer = datetime.datetime.now()
 
+    filepath = os.path.join(RESULT_DIRECTORY, str(counter) + EXTENSION)
+
     if PYPY:
 
         stackIm = Image.new("RGB", DIMENSIONS, "black")
@@ -116,7 +121,7 @@ def save():
         # stackIm = Image.fromarray(stack)
 
         #stackIm.save(os.path.join(RESULT_DIRECTORY, str(datetime.datetime.now()) + "__" + str(counter) + "__" + ".jpg"))
-        stackIm.save(os.path.join(RESULT_DIRECTORY, str(counter) + EXTENSION))
+        stackIm.save(filepath)
         stackIm.close()
 
     else:
@@ -124,39 +129,87 @@ def save():
 
         # convert to uint16 for saving, 0.5s faster than usage of t.astype(np.uint16)
         s = np.asarray(t, np.uint16)
-        cv2.imwrite(os.path.join(RESULT_DIRECTORY, str(counter) + EXTENSION), s)
+        cv2.imwrite(filepath, s)
 
         # stackIm = Image.fromarray(t.astype(np.uint16), "I;16")
         # stackIm.save(os.path.join(RESULT_DIRECTORY, str(counter) + EXTENSION))
         # stackIm.close()
 
 
-    timeperimage = timediff/processed if processed != 0 else 0
+    timeperimage = (timediff/processed).total_seconds() if processed != 0 else 0
     processed    = 0 # reset
 
-    print("saved. counter: {} time total: {} saving image: {} time per image: {}".format(counter, timediff, stop_time(), timeperimage.total_seconds()))
+    print("saved. counter: {} time total: {} saving image: {} time per image: {}".format(counter, timediff, stop_time(), timeperimage))
+    return filepath
+
+
+def read_metadata(images):
+    info = {}
+
+    # exposure time
+    earliest_image  = None
+    latest_image    = None
+
+    for image in images:
+        metadata = pyexiv2.ImageMetadata(os.path.join(INPUT_DIRECTORY, image))
+        metadata.read()
+
+        timetaken = metadata["Exif.Image.DateTime"].value
+
+        if earliest_image is None or earliest_image[1] > timetaken:
+            earliest_image = (image, timetaken)
+
+        if latest_image is None or latest_image[1] < timetaken:
+            latest_image = (image, timetaken)
+
+    if earliest_image is not None and latest_image is not None:
+        info["exposure_time"] = (latest_image[1] - earliest_image[1]).total_seconds()
+    else: 
+        info["exposure_time"] = 0
+        print("exposure_time could not be computed")
+
+    # capture date
+    if latest_image is not None:
+        info["capture_date"] = latest_image[1]
+    else:
+        info["capture_date"] = datetime.datetime.now()
+        print("exposure_time could not be computed")
+
+    # number of images
+    info["exposure_count"] = len(images)
+
+    # compressor version
+    try:
+        info["version"] = subprocess.check_output(["git", "describe", "--always"])
+        if info["version"][-1] == "\n":
+            info["version"] = info["version"][:-1]
+    except Exception as e:
+        print(str(e))
+        info["version"] = "not-available"
+
+    # compressing date
+    info["compressing_date"] = datetime.datetime.now()
+
+    return info
+
+
+def write_metadata(filepath, info):
+    metadata = pyexiv2.ImageMetadata(filepath)
+    metadata.read()
+
+    key = "Exif.Image.ProcessingSoftware";  metadata[key] = pyexiv2.ExifTag(key, "compressor v[{}]".format(info["version"]))
+    key = "Exif.Image.Artist";              metadata[key] = pyexiv2.ExifTag(key, "Christopher Getschmann")
+    key = "Exif.Image.Copyright";           metadata[key] = pyexiv2.ExifTag(key, "CreativeCommons BY-NC 4.0")
+    key = "Exif.Image.ExposureTime";        metadata[key] = pyexiv2.ExifTag(key, Fraction(info["exposure_time"]))
+    key = "Exif.Image.ImageNumber";         metadata[key] = pyexiv2.ExifTag(key, info["exposure_count"])
+    key = "Exif.Image.DateTimeOriginal";    metadata[key] = pyexiv2.ExifTag(key, info["capture_date"])
+    key = "Exif.Image.DateTime";            metadata[key] = pyexiv2.ExifTag(key, info["compressing_date"])
+
+    # TODO GPS Location
+
+    metadata.write()
 
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
-
-# get compressor info
-
-info = {}
-
-try:
-    info["label"] = subprocess.check_output(["git", "describe", "--always"])
-except Exception as e:
-    print(str(e))
-    info["label"] = "not-available"
-
-info["compressing-date"] = datetime.datetime.now()
-
-if info["label"][-1] == "\n":
-    info["label"] = info["label"][:-1]
-
-print info
-#sys.exit(0)
-
-# TODO: write metadata
 
 # load pickle and init variables
 try:
@@ -181,10 +234,14 @@ for root, dirs, files in os.walk(INPUT_DIRECTORY):
 
         crops.append(f)
 
-LIMIT = len(crops)
+LIMIT = 1 #len(crops)
 
 stop_time("searching for files: {}s")
 print("number of images: {}".format(LIMIT))
+
+metadata = read_metadata(crops)
+
+#sys.exit(0)
 
 for f in crops:
 
@@ -208,7 +265,7 @@ for f in crops:
         save()
         if PICKLE_INTERVAL > 0:
             write_pickle(tresor, stacked_images)
-        sys.exit(0)
+        break
 
     if PICKLE_INTERVAL > 0 and counter % PICKLE_INTERVAL == 0:
         write_pickle(tresor, stacked_images)
@@ -216,5 +273,6 @@ for f in crops:
     if SAVE_INTERVAL > 0 and counter % SAVE_INTERVAL == 0:
         save()
 
-save()
+filepath = save()
+write_metadata(filepath, metadata)
 sys.exit(0)
