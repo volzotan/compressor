@@ -1,8 +1,10 @@
 from PIL import Image
+import cv2
 import json
 import sys, os
 import pickle
 import datetime
+import subprocess
 
 import numpy as np
 
@@ -11,10 +13,26 @@ import numpy as np
     Stacker loads every image in the "aligned"
     directory and stacks it. Output to RESULT_DIRECTORY
 
-    Do not run with pypy! (Saving image 30-40s slower)
+    Do not run with pypy! (Saving image is 30-40s slower)
 
     numpy for pypy
     pypy -m pip install git+https://bitbucket.org/pypy/numpy.git
+
+
+    TODO:
+    =====
+    compressor should write EXIF Metadata to generated image file
+    * compressor version (or Date or git-commit)
+    * datetime of first and last image in series
+    * total number of images used
+    * total exposure time
+
+
+    DEPENDENCIES:
+    =============
+
+    * openCV 3      reading and writing images
+    * gexiv2        writing EXIF data
 
 """
 
@@ -32,17 +50,19 @@ def stop_time(msg=None):
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
 PICKLE_NAME         = "stack.pickle"
-DIRECTORY           = "aligned"
+DIRECTORY           = "images"
 RESULT_DIRECTORY    = "stack"
-DIMENSIONS          = (5184, 3136) #(1200, 545)
+DIMENSIONS          = (4896, 3264) #(5184, 3136) #(1200, 545)
+
+EXTENSION           = ".tif"
 
 PYPY                = False
 
 change_brightness   = False # should brightness_increase be applied?
 BRIGHTNESS_INCREASE = 0.80  # the less the brighter: divider * BRIGHTNESS_INCREASE
 
-SAVE_INTERVAL       = 10
-PICKLE_INTERVAL     = 300
+SAVE_INTERVAL       = 1
+PICKLE_INTERVAL     = -1
 
 #data               = json.load(open("export.json", "rb"))
 
@@ -99,17 +119,20 @@ def save():
         # stackIm = Image.fromarray(stack)
 
         #stackIm.save(os.path.join(RESULT_DIRECTORY, str(datetime.datetime.now()) + "__" + str(counter) + "__" + ".jpg"))
-        stackIm.save(os.path.join(RESULT_DIRECTORY, str(counter) + ".jpg"))
+        stackIm.save(os.path.join(RESULT_DIRECTORY, str(counter) + EXTENSION))
         stackIm.close()
 
     else:
         t = tresor / divider
 
-        # array filled with uint64 has to be converted to uint8 to fit JPEG
-        stackIm = Image.fromarray(t.astype(np.uint8), "RGB")
+        # convert to uint16 for saving, 0.5s faster than usage of t.astype(np.uint16)
+        s = np.asarray(t, np.uint16)
+        cv2.imwrite(os.path.join(RESULT_DIRECTORY, str(counter) + EXTENSION), s)
 
-        stackIm.save(os.path.join(RESULT_DIRECTORY, str(counter) + ".jpg"))
-        stackIm.close()
+        # stackIm = Image.fromarray(t.astype(np.uint16), "I;16")
+        # stackIm.save(os.path.join(RESULT_DIRECTORY, str(counter) + EXTENSION))
+        # stackIm.close()
+
 
     timeperimage = timediff/processed if processed != 0 else 0
     processed    = 0 # reset
@@ -117,6 +140,24 @@ def save():
     print("saved. counter: {} time total: {} saving image: {} time per image: {}".format(counter, timediff, stop_time(), timeperimage.total_seconds()))
 
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
+
+# get compressor info
+
+info = {}
+
+try:
+    info["label"] = subprocess.check_output(["git", "describe", "--always"])
+except Exception as e:
+    print(str(e))
+    info["label"] = "not-available"
+
+info["compressing-date"] = datetime.datetime.now()
+
+if info["label"][-1] == "\n":
+    info["label"] = info["label"][:-1]
+
+print info
+#sys.exit(0)
 
 # load pickle and init variables
 try:
@@ -153,26 +194,27 @@ for f in crops:
     if f in stacked_images:
         continue
 
-    im = Image.open(os.path.join(DIRECTORY, f)) 
+    # 3: read input as 16bit color TIFF
+    im = cv2.imread(os.path.join(DIRECTORY, f), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
 
     #data = np.array(im, np.int) # 100ms slower per image
     data = np.asarray(im, np.uint64)
     tresor = np.add(tresor, np.uint64(data))
 
     stacked_images.append(f)
-    im.close()
 
     processed += 1
 
     if counter >= LIMIT:
         save()
-        write_pickle(tresor, stacked_images)
+        if PICKLE_INTERVAL > 0:
+            write_pickle(tresor, stacked_images)
         sys.exit(0)
 
-    if counter % PICKLE_INTERVAL == 0:
+    if PICKLE_INTERVAL > 0 and counter % PICKLE_INTERVAL == 0:
         write_pickle(tresor, stacked_images)
 
-    if counter % SAVE_INTERVAL == 0:
+    if SAVE_INTERVAL > 0 and counter % SAVE_INTERVAL == 0:
         save()
 
 save()
