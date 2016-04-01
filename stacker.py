@@ -61,7 +61,7 @@ PYPY                = False
 change_brightness   = False # should brightness_increase be applied?
 BRIGHTNESS_INCREASE = 0.80  # the less the brighter: divider * BRIGHTNESS_INCREASE
 
-SAVE_INTERVAL       = 1
+SAVE_INTERVAL       = -1
 PICKLE_INTERVAL     = -1
 
 #data               = json.load(open("export.json", "rb"))
@@ -154,7 +154,7 @@ def read_metadata(images):
         metadata = pyexiv2.ImageMetadata(os.path.join(INPUT_DIRECTORY, image))
         metadata.read()
 
-        timetaken = metadata["Exif.Image.DateTime"].value
+        timetaken = metadata["Exif.Photo.DateTimeOriginal"].value
 
         if earliest_image is None or earliest_image[1] > timetaken:
             earliest_image = (image, timetaken)
@@ -234,7 +234,7 @@ for root, dirs, files in os.walk(INPUT_DIRECTORY):
 
         crops.append(f)
 
-LIMIT = 1 #len(crops)
+LIMIT = len(crops)
 
 stop_time("searching for files: {}s")
 print("number of images: {}".format(LIMIT))
