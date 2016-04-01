@@ -53,10 +53,7 @@ PICKLE_NAME         = "stack.pickle"
 INPUT_DIRECTORY     = "images"
 RESULT_DIRECTORY    = "stack"
 DIMENSIONS          = (4896, 3264) #(5184, 3136) #(1200, 545)
-
 EXTENSION           = ".tif"
-
-PYPY                = False
 
 change_brightness   = False # should brightness_increase be applied?
 BRIGHTNESS_INCREASE = 0.80  # the less the brighter: divider * BRIGHTNESS_INCREASE
@@ -103,38 +100,11 @@ def save():
 
     filepath = os.path.join(RESULT_DIRECTORY, str(counter) + EXTENSION)
 
-    if PYPY:
+    t = tresor / divider
 
-        stackIm = Image.new("RGB", DIMENSIONS, "black")
-        stack = stackIm.load()
-
-        t = tresor.transpose() / divider
-
-        for x in range(0, DIMENSIONS[0]):
-            for y in range(0, DIMENSIONS[1]):
-                try:
-                    stack[x,y] = (t[0][x][y], t[1][x][y], t[2][x][y])
-                except Exception as e:
-                    print(str(e))
-                    raise e
-
-        # stackIm = Image.fromarray(stack)
-
-        #stackIm.save(os.path.join(RESULT_DIRECTORY, str(datetime.datetime.now()) + "__" + str(counter) + "__" + ".jpg"))
-        stackIm.save(filepath)
-        stackIm.close()
-
-    else:
-        t = tresor / divider
-
-        # convert to uint16 for saving, 0.5s faster than usage of t.astype(np.uint16)
-        s = np.asarray(t, np.uint16)
-        cv2.imwrite(filepath, s)
-
-        # stackIm = Image.fromarray(t.astype(np.uint16), "I;16")
-        # stackIm.save(os.path.join(RESULT_DIRECTORY, str(counter) + EXTENSION))
-        # stackIm.close()
-
+    # convert to uint16 for saving, 0.5s faster than usage of t.astype(np.uint16)
+    s = np.asarray(t, np.uint16)
+    cv2.imwrite(filepath, s)
 
     timeperimage = (timediff/processed).total_seconds() if processed != 0 else 0
     processed    = 0 # reset
@@ -240,8 +210,6 @@ stop_time("searching for files: {}s")
 print("number of images: {}".format(LIMIT))
 
 metadata = read_metadata(crops)
-
-#sys.exit(0)
 
 for f in crops:
 
