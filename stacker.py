@@ -25,6 +25,11 @@ from fractions import Fraction
     * total number of images used
     * total exposure time
 
+    and reapply extracted Metadata:
+    * focal length
+    * GPS Location Data
+    * Address Location Data (City, Province-State, Location Code, etc)
+
 
     DEPENDENCIES:
     =============
@@ -43,20 +48,27 @@ def stop_time(msg=None):
     global timer
     seconds = (datetime.datetime.now() - timer).total_seconds()
     if msg is not None:
-        print(msg.format(seconds))
+        if seconds >= 0.1:
+            print(msg.format(seconds, "s"))  
+        else: # milliseconds
+            print(msg.format(seconds * 1000, "ms"))  
+
     timer = datetime.datetime.now()
+
     return seconds
 
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
 PICKLE_NAME         = "stack.pickle"
-INPUT_DIRECTORY     = "images"
+INPUT_DIRECTORY     = "aligned"
 RESULT_DIRECTORY    = "stack"
 DIMENSIONS          = (4896, 3264) #(5184, 3136) #(1200, 545)
 EXTENSION           = ".tif"
 
-change_brightness   = False # should brightness_increase be applied?
+CHANGE_BRIGHTNESS   = False # should brightness_increase be applied?
 BRIGHTNESS_INCREASE = 0.80  # the less the brighter: divider * BRIGHTNESS_INCREASE
+
+WRITE_METADATA      = True
 
 SAVE_INTERVAL       = -1
 PICKLE_INTERVAL     = -1
@@ -74,7 +86,7 @@ stacked_images      = []
 #tresor = [[[0 for x in range(0,3)] for x in range(DIMENSIONS[1])] for x in range(DIMENSIONS[0])] 
 tresor = np.zeros((DIMENSIONS[1], DIMENSIONS[0], 3), dtype=np.uint64)
 
-stop_time("initialization: {}s")
+stop_time("initialization: {}{}")
 
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
@@ -92,7 +104,7 @@ def save():
     global timer
     global processed
 
-    divider = int(round(counter * BRIGHTNESS_INCREASE, 0)) if change_brightness else counter
+    divider = int(round(counter * BRIGHTNESS_INCREASE, 0)) if CHANGE_BRIGHTNESS else counter
 
     endtime = datetime.datetime.now()
     timediff = endtime - timer
@@ -168,6 +180,7 @@ def write_metadata(filepath, info):
     metadata.read()
 
     key = "Exif.Image.ProcessingSoftware";  metadata[key] = pyexiv2.ExifTag(key, "compressor v[{}]".format(info["version"]))
+    # TODO: there seems to be additional tags referring to software. fill them.
     key = "Exif.Image.Artist";              metadata[key] = pyexiv2.ExifTag(key, "Christopher Getschmann")
     key = "Exif.Image.Copyright";           metadata[key] = pyexiv2.ExifTag(key, "CreativeCommons BY-NC 4.0")
     key = "Exif.Image.ExposureTime";        metadata[key] = pyexiv2.ExifTag(key, Fraction(info["exposure_time"]))
@@ -190,7 +203,7 @@ try:
 except Exception as e:
     print(str(e))
 
-stop_time("pickle loading: {}s")
+stop_time("pickle loading: {}{}")
 
 # get all file names
 for root, dirs, files in os.walk(INPUT_DIRECTORY):
@@ -206,10 +219,11 @@ for root, dirs, files in os.walk(INPUT_DIRECTORY):
 
 LIMIT = len(crops)
 
-stop_time("searching for files: {}s")
+stop_time("searching for files: {}{}")
 print("number of images: {}".format(LIMIT))
 
-metadata = read_metadata(crops)
+if WRITE_METADATA:
+    metadata = read_metadata(crops)
 
 for f in crops:
 
@@ -242,5 +256,6 @@ for f in crops:
         save()
 
 filepath = save()
-write_metadata(filepath, metadata)
+if WRITE_METADATA:
+    write_metadata(filepath, metadata)
 sys.exit(0)

@@ -3,7 +3,7 @@ import numpy as np
 import os, sys
 import datetime
 import json
-
+import pyexiv2
 import traceback
 
 OUTPUT_STR  = "{0} {1:>5d}  / {2:>5d} | "
@@ -16,25 +16,29 @@ OUTPUT_STR += "time_align {7:>.1f}"
 class Aligner(object):
 
     # Paths
-    REFERENCE_IMAGE         = ""
+    REFERENCE_IMAGE                 = "images/DSCF7390.tif"
+    EXTENSION                       = ".tif"
 
-    INPUT_DIR               = ""
-    OUTPUT_DIR              = ""
+    INPUT_DIR                       = "images"
+    OUTPUT_DIR                      = "aligned"
 
-    TRANSLATION_DATA        = "translation_data.json"
-    JSON_SAVE_INTERVAL      = 100
-    SKIP_TRANSLATION        = 1     # do not calculate trans data from every image
+    TRANSLATION_DATA                = "translation_data.json"
+    JSON_SAVE_INTERVAL              = 100
+    SKIP_TRANSLATION                = 1     # do not calculate trans data from every image
+    USE_CORRECTED_TRANSLATION_DATA  = False
 
     # Options
-    DOWNSIZE                = True
-    RESET_MATRIX_EVERY_LOOP = True
-    OUTPUT_IMAGE_QUALITY    = 75    # JPEG
-    SIZE_THRESHOLD          = 100   # bytes
+    DOWNSIZE                        = True
+    CROP                            = False
+    TRANSFER_METADATA               = True
+    RESET_MATRIX_EVERY_LOOP         = True
+    OUTPUT_IMAGE_QUALITY            = 75    # JPEG
+    SIZE_THRESHOLD                  = 100   # bytes
 
     # ECC Algorithm
-    NUMBER_OF_ITERATIONS    = 1000
-    TERMINATION_EPS         = 1e-10
-    WARP_MODE               = cv2.MOTION_TRANSLATION
+    NUMBER_OF_ITERATIONS            = 1000
+    TERMINATION_EPS                 = 1e-10
+    WARP_MODE                       = cv2.MOTION_TRANSLATION
 
     def __init__(self):
 
@@ -46,7 +50,7 @@ class Aligner(object):
         self.outlier             = 0
         
         # Read the reference image
-        self.reference_image = cv2.imread(self.REFERENCE_IMAGE);
+        self.reference_image = cv2.imread(self.REFERENCE_IMAGE, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH);
 
         # Find size
         self.sz = self.reference_image.shape
@@ -90,10 +94,10 @@ class Aligner(object):
             return (im2, warp_matrix, warp_matrix[0][2], warp_matrix[1][2])
 
 
-    def transform(self, image_object, image_name, x, y):
+    def transform_and_write(self, image_object, image_name, x, y):
 
-        destination_file    = os.path.join(OUTPUT_DIR, image_name)
-        warp_matrix         = _create_warp_matrix()
+        destination_file    = os.path.join(self.OUTPUT_DIR, image_name)
+        warp_matrix         = self._create_warp_matrix()
 
         warp_matrix[0][2] = x
         warp_matrix[1][2] = y
@@ -172,10 +176,18 @@ class Aligner(object):
     def step2(self):
         self._load_data()
 
+        images = []
+
+        for item in self.translation_data.keys():
+            images.append(item)
+
         for image in images:
             self.counter += 1
 
-            if os.path.isfile(os.path.join(OUTPUT_DIR, image)):
+            source_file = os.path.join(self.INPUT_DIR, image)
+            destination_file = os.path.join(self.OUTPUT_DIR, image)
+
+            if os.path.isfile(destination_file):
                 self.already_existing += 1
                 print("{} already transformed".format(image))
                 continue
@@ -184,15 +196,53 @@ class Aligner(object):
                 self.failed += 1
                 print("{} translation data missing".format(image))
 
-            # translation_data[image] = ( (computed_x, computed_y), (corrected_x, corrected_y) ) 
-            (x, y) = (self.translation_data[image][1][0], self.translation_data[image][1][1])
+            if self.USE_CORRECTED_TRANSLATION_DATA:
+                # translation_data[image] = ( (computed_x, computed_y), (corrected_x, corrected_y) ) 
+                (x, y) = (self.translation_data[image][1][0], self.translation_data[image][1][1])
+            else:
+                (x, y) = (self.translation_data[image][0][0], self.translation_data[image][0][1])
 
             timer_start = datetime.datetime.now()
 
             im2 = self._read_image_and_crop(source_file)
-            self.transform(im2, image, x, y)
+            self.transform_and_write(im2, image, x, y)
 
-            print(OUTPUT_STR.format(image, counter, len(images_for_alignment), skipped, success, failed, outlier, timediff_crop.total_seconds(), timediff_align.total_seconds()))
+            timediff_align = datetime.datetime.now() - timer_start
+
+            # extract metadata and insert into aligned image
+            if self.TRANSFER_METADATA:
+                self._transfer_metadata(source_file, destination_file)
+
+            print(OUTPUT_STR.format(image, self.counter, len(images), self.skipped, self.success, self.failed, self.outlier, timediff_align.total_seconds()))
+
+
+    def _transfer_metadata(self, source, destination):
+        metadata_source = pyexiv2.ImageMetadata(source)
+        metadata_source.read()
+        metadata_destination = pyexiv2.ImageMetadata(destination)
+        metadata_destination.read()
+
+        #key_types = [metadata_source.exif_keys()]
+
+        for key in metadata_source.exif_keys:
+            try:
+                metadata_destination[key] = pyexiv2.ExifTag(key, metadata_source[key].value)
+            except Exception as e:
+                print(key + "   " + str(e))
+
+        for key in metadata_source.iptc_keys:
+            try:
+                metadata_destination[key] = pyexiv2.IptcTag(key, metadata_source[key].value)
+            except Exception as e:
+                print(key + "   " + str(e))
+
+        # for key in metadata_source.xmp_keys:
+        #     try:
+        #         metadata_destination[key] = pyexiv2.XmpTag(key, metadata_source[key].value)
+        #     except Exception as e:
+        #         print(key + "   " + str(e))
+
+        metadata_destination.write()
 
 
     def _load_data(self):
@@ -223,7 +273,10 @@ class Aligner(object):
 
     def _read_image_and_crop(self, source_file):
         # orig y 3456
-        return cv2.imread(source_file)[290:3426, 0:5184]
+        if self.CROP:
+            return cv2.imread(source_file, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)[290:3426, 0:5184]
+        else:
+            return cv2.imread(source_file, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
 
 
 
@@ -237,7 +290,7 @@ if __name__ == "__main__":
             if f == ".DS_Store":
                 continue
 
-            if not f.endswith(".jpg"):
+            if not f.lower().endswith(Aligner.EXTENSION.lower()):
                 continue
 
             # if f in problem_list:
@@ -245,6 +298,6 @@ if __name__ == "__main__":
 
             ls.append(f)
 
-    Aligner().step1(ls)
-
+    #Aligner().step1(ls)
+    Aligner().step2()
         
