@@ -24,7 +24,7 @@ class Aligner(object):
 
     TRANSLATION_DATA                = "translation_data.json"
     JSON_SAVE_INTERVAL              = 100
-    SKIP_TRANSLATION                = 1     # do not calculate trans data from every image
+    SKIP_TRANSLATION                = -1     # do calculate translation data only from every n-th image
     USE_CORRECTED_TRANSLATION_DATA  = False
 
     # Options
@@ -49,8 +49,8 @@ class Aligner(object):
         self.failed              = 0
         self.outlier             = 0
         
-        # Read the reference image
-        self.reference_image = cv2.imread(self.REFERENCE_IMAGE, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH);
+        # Read the reference image (as 8bit for the ECC algorithm)
+        self.reference_image = cv2.imread(self.REFERENCE_IMAGE)
 
         # Find size
         self.sz = self.reference_image.shape
@@ -72,7 +72,7 @@ class Aligner(object):
         if self.RESET_MATRIX_EVERY_LOOP:
             warp_matrix = self._create_warp_matrix() # reset
 
-        im2 = self._read_image_and_crop(source_file) 
+        im2 = self._read_image_and_crop(source_file, read_as_8bit=True) 
 
         # proceed with downsized version
         if self.DOWNSIZE:
@@ -134,7 +134,7 @@ class Aligner(object):
                 print("{} empty image".format(image))
                 continue
 
-            if self.success % self.SKIP_TRANSLATION != 0:
+            if self.SKIP_TRANSLATION > 0 and self.success % self.SKIP_TRANSLATION != 0:
                 skip = True
             else:
                 skip = False
@@ -271,12 +271,17 @@ class Aligner(object):
             return np.eye(2, 3, dtype=np.float32)
 
 
-    def _read_image_and_crop(self, source_file):
-        # orig y 3456
-        if self.CROP:
-            return cv2.imread(source_file, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)[290:3426, 0:5184]
+    def _read_image_and_crop(self, source_file, read_as_8bit=False):
+
+        if not read_as_8bit:
+            im = cv2.imread(source_file, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
         else:
-            return cv2.imread(source_file, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
+            im = cv2.imread(source_file) 
+
+        if not self.CROP:
+            return im
+        else:
+            return im[290:3426, 0:5184]
 
 
 
