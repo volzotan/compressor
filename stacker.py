@@ -181,9 +181,12 @@ def write_metadata(filepath, info):
     metadata = pyexiv2.ImageMetadata(filepath)
     metadata.read()
 
-    # TODO: Exif.Image.ProcessingSoftware is overwritten by Lightroom when the final export is done
-    key = "Exif.Image.ProcessingSoftware";  metadata[key] = pyexiv2.ExifTag(key, "compressor v[{}]".format(info["version"]))
-    # TODO: there seems to be additional tags referring to software. fill them.
+    compressor_name = "compressor v[{}]".format(info["version"])
+
+    # Exif.Image.ProcessingSoftware is overwritten by Lightroom when the final export is done
+    key = "Exif.Image.ProcessingSoftware";  metadata[key] = pyexiv2.ExifTag(key, compressor_name)
+    key = "Exif.Image.Software";            metadata[key] = pyexiv2.ExifTag(key, compressor_name)
+
     key = "Exif.Image.Artist";              metadata[key] = pyexiv2.ExifTag(key, "Christopher Getschmann")
     key = "Exif.Image.Copyright";           metadata[key] = pyexiv2.ExifTag(key, "CreativeCommons BY-NC 4.0")
     key = "Exif.Image.ExposureTime";        metadata[key] = pyexiv2.ExifTag(key, Fraction(info["exposure_time"]))
