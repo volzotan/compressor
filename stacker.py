@@ -60,9 +60,9 @@ def stop_time(msg=None):
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
 PICKLE_NAME         = "stack.pickle"
-INPUT_DIRECTORY     = "aligned"
+INPUT_DIRECTORY     = "images"
 RESULT_DIRECTORY    = "stack"
-DIMENSIONS          = (4896, 3264) #(5184, 3136) #(1200, 545)
+DIMENSIONS          = None #(4896, 3264) #(6000, 4000) #(5184, 3136) #(1200, 545)
 EXTENSION           = ".tif"
 
 CHANGE_BRIGHTNESS   = False # should brightness_increase be applied?
@@ -70,7 +70,7 @@ BRIGHTNESS_INCREASE = 0.80  # the less the brighter: divider * BRIGHTNESS_INCREA
 
 WRITE_METADATA      = True
 
-SAVE_INTERVAL       = -1
+SAVE_INTERVAL       = 10
 PICKLE_INTERVAL     = -1
 
 #data               = json.load(open("export.json", "rb"))
@@ -83,10 +83,7 @@ stacked_images      = []
 
 # three dimensional array
 # be careful about using types that are big enough to prevent overflows
-#tresor = [[[0 for x in range(0,3)] for x in range(DIMENSIONS[1])] for x in range(DIMENSIONS[0])] 
-tresor = np.zeros((DIMENSIONS[1], DIMENSIONS[0], 3), dtype=np.uint64)
-
-stop_time("initialization: {}{}")
+tresor = None
 
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
@@ -160,6 +157,11 @@ def read_metadata(images):
     # number of images
     info["exposure_count"] = len(images)
 
+    # focal length
+    metadata = pyexiv2.ImageMetadata(os.path.join(INPUT_DIRECTORY, images[0]))
+    metadata.read()
+    info["focal_length"] = metadata["Exif.Photo.FocalLength"].value
+
     # compressor version
     try:
         info["version"] = subprocess.check_output(["git", "describe", "--always"])
@@ -179,6 +181,7 @@ def write_metadata(filepath, info):
     metadata = pyexiv2.ImageMetadata(filepath)
     metadata.read()
 
+    # TODO: Exif.Image.ProcessingSoftware is overwritten by Lightroom when the final export is done
     key = "Exif.Image.ProcessingSoftware";  metadata[key] = pyexiv2.ExifTag(key, "compressor v[{}]".format(info["version"]))
     # TODO: there seems to be additional tags referring to software. fill them.
     key = "Exif.Image.Artist";              metadata[key] = pyexiv2.ExifTag(key, "Christopher Getschmann")
@@ -188,6 +191,8 @@ def write_metadata(filepath, info):
     key = "Exif.Image.DateTimeOriginal";    metadata[key] = pyexiv2.ExifTag(key, info["capture_date"])
     key = "Exif.Image.DateTime";            metadata[key] = pyexiv2.ExifTag(key, info["compressing_date"])
 
+    # TODO Focal Length
+    key = "Exif.Image.FocalLength";         metadata[key] = pyexiv2.ExifTag(key, info["focal_length"])
     # TODO GPS Location
 
     metadata.write()
@@ -224,6 +229,13 @@ print("number of images: {}".format(LIMIT))
 
 if WRITE_METADATA:
     metadata = read_metadata(crops)
+
+if DIMENSIONS is None:
+    shape = cv2.imread(os.path.join(INPUT_DIRECTORY, crops[0])).shape
+    DIMENSIONS = (shape[1], shape[0])
+
+tresor = np.zeros((DIMENSIONS[1], DIMENSIONS[0], 3), dtype=np.uint64)
+stop_time("initialization: {}{}")
 
 for f in crops:
 

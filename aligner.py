@@ -52,6 +52,10 @@ class Aligner(object):
         # Read the reference image (as 8bit for the ECC algorithm)
         self.reference_image = cv2.imread(self.REFERENCE_IMAGE)
 
+        if self.reference_image is None:
+            print("reference image not found!")
+            sys.exit(-1)
+
         # Find size
         self.sz = self.reference_image.shape
 
@@ -286,23 +290,31 @@ class Aligner(object):
 
 
 if __name__ == "__main__":
-    ls = []
 
-    # acquire all filenames
-    for root, dirs, files in os.walk(Aligner.INPUT_DIR):
-        for f in files:
+    if (sys.argv) <= 1:
+        sys.exit(0)
 
-            if f == ".DS_Store":
-                continue
+    if sys.argv[1] == "step1":
+        ls = []
 
-            if not f.lower().endswith(Aligner.EXTENSION.lower()):
-                continue
+        # acquire all filenames
+        for root, dirs, files in os.walk(Aligner.INPUT_DIR):
+            for f in files:
 
-            # if f in problem_list:
-            #     continue
+                if f == ".DS_Store":
+                    continue
 
-            ls.append(f)
+                if not f.lower().endswith(Aligner.EXTENSION.lower()):
+                    continue
 
-    #Aligner().step1(ls)
-    Aligner().step2()
+                # if f in problem_list:
+                #     continue
+
+                ls.append(f)
+
+        Aligner().step1(ls)
+    elif sys.argv[1] == "step2":
+        Aligner().step2()
+    else:
+        print("illegal argument. exit.")
         
