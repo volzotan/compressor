@@ -160,7 +160,10 @@ def read_metadata(images):
     # focal length
     metadata = pyexiv2.ImageMetadata(os.path.join(INPUT_DIRECTORY, images[0]))
     metadata.read()
-    info["focal_length"] = metadata["Exif.Photo.FocalLength"].value
+    try:
+        info["focal_length"] = metadata["Exif.Photo.FocalLength"].value
+    except:
+        print("EXIF: focal length missing")
 
     # compressor version
     try:
@@ -220,12 +223,19 @@ for root, dirs, files in os.walk(INPUT_DIRECTORY):
         if f == ".DS_Store":
             continue
 
+        if not f.endswith(EXTENSION):
+            continue
+
         if os.path.getsize(os.path.join(INPUT_DIRECTORY, f)) < 100:
             continue
 
         crops.append(f)
 
 LIMIT = len(crops)
+
+if LIMIT <= 0:
+    print("no images found. exit.")
+    sys.exit(-1)
 
 stop_time("searching for files: {}{}")
 print("number of images: {}".format(LIMIT))
