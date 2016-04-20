@@ -164,6 +164,7 @@ def read_metadata(images):
         info["focal_length"] = metadata["Exif.Photo.FocalLength"].value
     except:
         print("EXIF: focal length missing")
+        info["focal_length"] = None
 
     # compressor version
     try:
