@@ -9,6 +9,7 @@ import numpy as np
 
 import pyexiv2
 from fractions import Fraction
+import math
 
 
 """
@@ -78,7 +79,7 @@ PICKLE_INTERVAL     = -1
 counter             = 0
 processed           = 0
 
-crops               = []
+input_images        = []
 stacked_images      = []
 
 # three dimensional array
@@ -204,6 +205,39 @@ def write_metadata(filepath, info):
 
     metadata.write()
 
+
+def _intensity(shutter, aperture, iso):
+
+    shutter_repr    = math.log(shutter, 2) + 13 # offset = 13 to accomodate shutter values down to 1/4000th second
+    iso_repr        = math.log(iso/100, 2) + 1  # offset = 1, iso 100 -> 1, not 0
+
+    if aperture is not None:
+        aperture_repr = np.interp(math.log(aperture, 2), [0, 4.5], [10, 1])
+    else:
+        aperture_repr = 1
+
+    return shutter_repr + aperture_repr + iso_repr
+
+def calculate_brightness_curve(images):
+    curve = []
+
+    for image in images:
+        metadata = pyexiv2.ImageMetadata(os.path.join(INPUT_DIRECTORY, image))
+        metadata.read()
+
+        shutter = float(metadata["Exif.Photo.ExposureTime"].value)
+        iso     = metadata["Exif.Photo.ISOSpeedRatings"].value
+        try:
+            aperture = float(metadata["Exif.Photo.ApertureValue"].value)
+        except KeyError as e:
+            # no aperture tag set, probably an lens adapter was used. assume fixed aperture.
+            aperture = None
+
+        curve.append((image, _intensity(shutter, aperture, iso)))
+
+    # print curve
+
+
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
 # load pickle and init variables
@@ -224,15 +258,15 @@ for root, dirs, files in os.walk(INPUT_DIRECTORY):
         if f == ".DS_Store":
             continue
 
-        if not f.endswith(EXTENSION):
+        if not f.lower().endswith(EXTENSION):
             continue
 
         if os.path.getsize(os.path.join(INPUT_DIRECTORY, f)) < 100:
             continue
 
-        crops.append(f)
+        input_images.append(f)
 
-LIMIT = len(crops)
+LIMIT = len(input_images)
 
 if LIMIT <= 0:
     print("no images found. exit.")
@@ -242,16 +276,21 @@ stop_time("searching for files: {}{}")
 print("number of images: {}".format(LIMIT))
 
 if WRITE_METADATA:
-    metadata = read_metadata(crops)
+    metadata = read_metadata(input_images)
 
 if DIMENSIONS is None:
-    shape = cv2.imread(os.path.join(INPUT_DIRECTORY, crops[0])).shape
+    shape = cv2.imread(os.path.join(INPUT_DIRECTORY, input_images[0])).shape
     DIMENSIONS = (shape[1], shape[0])
 
 tresor = np.zeros((DIMENSIONS[1], DIMENSIONS[0], 3), dtype=np.uint64)
 stop_time("initialization: {}{}")
 
-for f in crops:
+brightness_index = calculate_brightness_curve(input_images)
+stop_time("compute brightness curve: {}{}")
+
+sys.exit(0)
+
+for f in input_images:
 
     counter += 1
 
