@@ -208,6 +208,11 @@ def write_metadata(filepath, info):
 
 def _intensity(shutter, aperture, iso):
 
+    # limits in this calculations:
+    # min shutter is 1/4000th second
+    # min aperture is 22
+    # min iso is 100
+
     shutter_repr    = math.log(shutter, 2) + 13 # offset = 13 to accomodate shutter values down to 1/4000th second
     iso_repr        = math.log(iso/100, 2) + 1  # offset = 1, iso 100 -> 1, not 0
 
@@ -234,6 +239,18 @@ def calculate_brightness_curve(images):
             aperture = None
 
         curve.append((image, _intensity(shutter, aperture, iso)))
+
+    # normalize
+    values = [x[1] for x in curve]
+
+    min_brightness = min(values)
+    max_brightness = max(values)
+
+    for i in range(0, len(curve)):
+        # range 0 to 1, because we have to invert the camera values to derive the brightness
+        # value of the camera environment
+
+        curve[i] = (curve[i][0], np.interp(curve[i][1], [min_brightness, max_brightness], [1, 0]))
 
     # print curve
 
