@@ -69,6 +69,11 @@ EXTENSION           = ".tif"
 CHANGE_BRIGHTNESS   = False # should brightness_increase be applied?
 BRIGHTNESS_INCREASE = 0.80  # the less the brighter: divider * BRIGHTNESS_INCREASE
 
+APPLY_CURVE         = False
+APPLY_PEAKING       = True
+PEAKING_THRESHOLD   = 250
+PEAKING_FACTOR      = 0.5
+
 WRITE_METADATA      = True
 
 SAVE_INTERVAL       = 10
@@ -82,8 +87,8 @@ processed           = 0
 input_images        = []
 stacked_images      = []
 
-# three dimensional array
-# be careful about using types that are big enough to prevent overflows
+curve_avg           = 0
+
 tresor = None
 
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
@@ -101,6 +106,7 @@ def save():
 
     global timer
     global processed
+    global curve_avg
 
     divider = int(round(counter * BRIGHTNESS_INCREASE, 0)) if CHANGE_BRIGHTNESS else counter
 
@@ -110,7 +116,10 @@ def save():
 
     filepath = os.path.join(RESULT_DIRECTORY, str(counter) + EXTENSION)
 
-    t = tresor / divider
+    if APPLY_CURVE:
+        t = tresor / (divider + (divider * curve_avg) )
+    else:
+        t = tresor / (divider)
 
     # convert to uint16 for saving, 0.5s faster than usage of t.astype(np.uint16)
     s = np.asarray(t, np.uint16)
@@ -252,7 +261,11 @@ def calculate_brightness_curve(images):
 
         curve[i] = (curve[i][0], np.interp(curve[i][1], [min_brightness, max_brightness], [1, 0]))
 
-    # print curve
+    global curve_avg
+    values = [x[1] for x in curve]
+    curve_avg = sum(values) / float(len(values))
+
+    return curve
 
 
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
@@ -302,10 +315,9 @@ if DIMENSIONS is None:
 tresor = np.zeros((DIMENSIONS[1], DIMENSIONS[0], 3), dtype=np.uint64)
 stop_time("initialization: {}{}")
 
-brightness_index = calculate_brightness_curve(input_images)
-stop_time("compute brightness curve: {}{}")
-
-sys.exit(0)
+if APPLY_CURVE:
+    curve = brightness_index = calculate_brightness_curve(input_images)
+    stop_time("compute brightness curve: {}{}")
 
 for f in input_images:
 
@@ -317,9 +329,24 @@ for f in input_images:
     # 3: read input as 16bit color TIFF
     im = cv2.imread(os.path.join(INPUT_DIRECTORY, f), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
 
-    #data = np.array(im, np.int) # 100ms slower per image
-    data = np.asarray(im, np.uint64)
-    tresor = np.add(tresor, np.uint64(data))
+    # data = np.array(im, np.int) # 100ms slower per image
+    data = np.uint64(np.asarray(im, np.uint64))
+    tresor = np.add(tresor, data)
+
+    if APPLY_CURVE:
+        tresor = np.add(tresor, data * curve[counter][1])
+
+    if APPLY_PEAKING:
+        
+        # calculate boolean mask for every color channel
+        mask_rgb = data[:,:,:] < PEAKING_THRESHOLD
+
+        # combine mask via AND
+        mask_avg = np.logical_and(mask_rgb[:,:,0], mask_rgb[:,:,1], mask_rgb[:,:,2])
+
+        data[mask_avg] = 0
+
+        tresor = np.add(tresor, data * PEAKING_FACTOR)
 
     stacked_images.append(f)
 
