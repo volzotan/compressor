@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from PIL import Image
 import cv2
 import json
@@ -270,6 +272,19 @@ def calculate_brightness_curve(images):
 
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
+# transform to absolute paths
+BASE_DIR = os.path.dirname(os.path.realpath(__file__))
+
+if not INPUT_DIRECTORY.startswith("/"):
+    INPUT_DIRECTORY = os.path.join(BASE_DIR, INPUT_DIRECTORY)
+
+if not RESULT_DIRECTORY.startswith("/"):
+    RESULT_DIRECTORY = os.path.join(BASE_DIR, RESULT_DIRECTORY)
+
+# check or create RESULT_DIRECTORY
+if not os.path.exists(RESULT_DIRECTORY):
+    os.makedirs(RESULT_DIRECTORY)
+
 # load pickle and init variables
 try:
     pick = pickle.load(open(PICKLE_NAME, "rb"))
@@ -337,7 +352,6 @@ for f in input_images:
         tresor = np.add(tresor, data * curve[counter][1])
 
     if APPLY_PEAKING:
-        
         # calculate boolean mask for every color channel
         mask_rgb = data[:,:,:] < PEAKING_THRESHOLD
 
@@ -346,7 +360,7 @@ for f in input_images:
 
         data[mask_avg] = 0
 
-        tresor = np.add(tresor, data * PEAKING_FACTOR)
+        tresor = np.add(tresor, data * PEAKING_MUL_FACTOR)
 
     stacked_images.append(f)
 
