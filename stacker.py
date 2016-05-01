@@ -180,7 +180,7 @@ def read_metadata(images):
 
     # compressor version
     try:
-        info["version"] = subprocess.check_output(["git", "describe", "--always"])
+        info["version"] = subprocess.check_output(["git", "describe", "--always"], cwd=BASE_DIR)
         if info["version"][-1] == "\n":
             info["version"] = info["version"][:-1]
     except Exception as e:
@@ -215,6 +215,7 @@ def write_metadata(filepath, info):
     # TODO GPS Location
 
     metadata.write()
+    print("metadata written to {}".format(filepath))
 
 
 def _intensity(shutter, aperture, iso):
@@ -367,7 +368,6 @@ for f in input_images:
     processed += 1
 
     if counter >= LIMIT:
-        save()
         if PICKLE_INTERVAL > 0:
             write_pickle(tresor, stacked_images)
         break
@@ -381,4 +381,6 @@ for f in input_images:
 filepath = save()
 if WRITE_METADATA:
     write_metadata(filepath, metadata)
+
+print("finished. time total: {}".format(datetime.datetime.now() - starttime))
 sys.exit(0)
