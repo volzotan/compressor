@@ -77,9 +77,12 @@ PEAKING_THRESHOLD   = 250
 PEAKING_FACTOR      = 0.5
 
 WRITE_METADATA      = True
+SORT_IMAGES         = False
 
 SAVE_INTERVAL       = 10
 PICKLE_INTERVAL     = -1
+
+DEBUG               = False
 
 #data               = json.load(open("export.json", "rb"))
 
@@ -91,9 +94,39 @@ stacked_images      = []
 
 curve_avg           = 0
 
+stopwatch           = {
+    "load_image": 0,
+    "convert_to_array": 0,
+    "curve": 0,
+    "peaking": 0,
+    "adding": 0,
+    "write_image": 0
+}
+
 tresor = None
 
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
+
+def print_config():
+
+    config = [
+    "directories:",
+    "   input: {}".format(INPUT_DIRECTORY),
+    "   output: {}".format(RESULT_DIRECTORY),
+    "extension: {}".format(EXTENSION),
+    "",
+    "modifications:",
+    "   curve: {}".format(APPLY_CURVE),
+    "   peaking: {}".format(APPLY_PEAKING),
+    "",
+    "save interval: {}".format(SAVE_INTERVAL),
+    "pickle interval: {}".format(PICKLE_INTERVAL)
+    ]
+
+    for line in config:
+        print line
+
+    print("---------------------------------------")
 
 def write_pickle(tresor, stacked_images):
     print("dump the pickle...")
@@ -130,7 +163,10 @@ def save():
     timeperimage = (timediff/processed).total_seconds() if processed != 0 else 0
     processed    = 0 # reset
 
-    print("saved. counter: {} time total: {} saving image: {} time per image: {}".format(counter, timediff, stop_time(), timeperimage))
+    save_time = stop_time()
+
+    print("saved. counter: {} time total: {} saving image: {} time per image: {}".format(counter, timediff, save_time, timeperimage))
+    stopwatch["write_image"] += save_time
     return filepath
 
 
@@ -271,6 +307,14 @@ def calculate_brightness_curve(images):
     return curve
 
 
+def _sort_helper(value):
+
+    # still_123.jpg
+
+    pos = value.index(".")
+    number = value[6:pos]
+    return int(number)
+
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
 # transform to absolute paths
@@ -285,6 +329,8 @@ if not RESULT_DIRECTORY.startswith("/"):
 # check or create RESULT_DIRECTORY
 if not os.path.exists(RESULT_DIRECTORY):
     os.makedirs(RESULT_DIRECTORY)
+
+print_config()
 
 # load pickle and init variables
 try:
@@ -321,6 +367,9 @@ if LIMIT <= 0:
 stop_time("searching for files: {}{}")
 print("number of images: {}".format(LIMIT))
 
+if SORT_IMAGES:
+    input_images = sorted(input_images, key=_sort_helper)
+
 if WRITE_METADATA:
     metadata = read_metadata(input_images)
 
@@ -344,13 +393,17 @@ for f in input_images:
 
     # 3: read input as 16bit color TIFF
     im = cv2.imread(os.path.join(INPUT_DIRECTORY, f), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
+    stopwatch["load_image"] += stop_time()
 
     # data = np.array(im, np.int) # 100ms slower per image
     data = np.uint64(np.asarray(im, np.uint64))
+    stopwatch["convert_to_array"] += stop_time()
     tresor = np.add(tresor, data)
+    stopwatch["adding"] += stop_time()
 
     if APPLY_CURVE:
         tresor = np.add(tresor, data * curve[counter][1])
+        stopwatch["curve"] += stop_time()
 
     if APPLY_PEAKING:
         # calculate boolean mask for every color channel
@@ -362,6 +415,7 @@ for f in input_images:
         data[mask_avg] = 0
 
         tresor = np.add(tresor, data * PEAKING_MUL_FACTOR)
+        stopwatch["peaking"] += stop_time()
 
     stacked_images.append(f)
 
