@@ -9,6 +9,8 @@ import datetime
 import subprocess
 import numpy as np
 
+import matplotlib.pyplot as plt
+
 import pyexiv2
 from fractions import Fraction
 import math
@@ -20,16 +22,17 @@ import math
 
     Do not run with pypy! (Saving image is 30-40s slower)
 
-    TODO:
+
     =====
-    compressor should write EXIF Metadata to generated image file
+    compressor writes EXIF Metadata to generated image file
     * compressor version (or Date or git-commit)
     * datetime of first and last image in series
     * total number of images used
     * total exposure time
 
-    and reapply extracted Metadata:
+    and (should, still TODO) reapply extracted Metadata:
     * focal length
+    * camera model
     * GPS Location Data
     * Address Location Data (City, Province-State, Location Code, etc)
 
@@ -71,10 +74,11 @@ EXTENSION           = ".tif"
 CHANGE_BRIGHTNESS   = False # should brightness_increase be applied?
 BRIGHTNESS_INCREASE = 0.80  # the less the brighter: divider * BRIGHTNESS_INCREASE
 
+DISPLAY_CURVE       = True
 APPLY_CURVE         = False
-APPLY_PEAKING       = True
-PEAKING_THRESHOLD   = 250
-PEAKING_FACTOR      = 0.5
+APPLY_PEAKING       = False
+PEAKING_THRESHOLD   = 60000 # TODO: don't use fixed values
+PEAKING_MUL_FACTOR  = 1.0
 
 WRITE_METADATA      = True
 SORT_IMAGES         = False
@@ -280,16 +284,22 @@ def calculate_brightness_curve(images):
 
         shutter = float(metadata["Exif.Photo.ExposureTime"].value)
         iso     = metadata["Exif.Photo.ISOSpeedRatings"].value
+
+        try: 
+            time    = metadata["Exif.Image.DateTimeOriginal"].value
+        except KeyError as e:
+            time    = metadata["Exif.Image.DateTime"].value
+
         try:
             aperture = float(metadata["Exif.Photo.ApertureValue"].value)
         except KeyError as e:
             # no aperture tag set, probably an lens adapter was used. assume fixed aperture.
             aperture = None
 
-        curve.append((image, _intensity(shutter, aperture, iso)))
+        curve.append((image, time, _intensity(shutter, aperture, iso)))
 
     # normalize
-    values = [x[1] for x in curve]
+    values = [x[2] for x in curve]
 
     min_brightness = min(values)
     max_brightness = max(values)
@@ -298,13 +308,27 @@ def calculate_brightness_curve(images):
         # range 0 to 1, because we have to invert the camera values to derive the brightness
         # value of the camera environment
 
-        curve[i] = (curve[i][0], np.interp(curve[i][1], [min_brightness, max_brightness], [1, 0]))
+        #           image name   time         relative brightness value [0;1]                                   inverted absolute value
+        curve[i] = (curve[i][0], curve[i][1], np.interp(curve[i][2], [min_brightness, max_brightness], [1, 0]), np.interp(curve[i][2], [min_brightness, max_brightness], [max_brightness, min_brightness]))
 
     global curve_avg
-    values = [x[1] for x in curve]
+    values = [x[2] for x in curve]
     curve_avg = sum(values) / float(len(values))
 
     return curve
+
+
+def display_curve(curve):
+    #plt.rcdefaults()
+
+    dates = [i[1] for i in curve]
+    values = [i[3] for i in curve]
+
+    print values
+
+    plt.plot(dates, values)
+
+    plt.show()
 
 
 def _sort_helper(value):
@@ -380,9 +404,11 @@ if DIMENSIONS is None:
 tresor = np.zeros((DIMENSIONS[1], DIMENSIONS[0], 3), dtype=np.uint64)
 stop_time("initialization: {}{}")
 
-if APPLY_CURVE:
-    curve = brightness_index = calculate_brightness_curve(input_images)
-    stop_time("compute brightness curve: {}{}")
+curve = brightness_index = calculate_brightness_curve(input_images)
+stop_time("compute brightness curve: {}{}")
+
+if DISPLAY_CURVE:
+    display_curve(curve)
 
 for f in input_images:
 
