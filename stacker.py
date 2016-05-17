@@ -74,10 +74,12 @@ EXTENSION           = ".tif"
 CHANGE_BRIGHTNESS   = False # should brightness_increase be applied?
 BRIGHTNESS_INCREASE = 0.80  # the less the brighter: divider * BRIGHTNESS_INCREASE
 
-DISPLAY_CURVE       = True
+DISPLAY_CURVE       = False
 APPLY_CURVE         = False
-APPLY_PEAKING       = False
-PEAKING_THRESHOLD   = 60000 # TODO: don't use fixed values
+
+DISPLAY_PEAKING     = True
+APPLY_PEAKING       = True
+PEAKING_THRESHOLD   = 200 # TODO: don't use fixed values
 PEAKING_MUL_FACTOR  = 1.0
 
 WRITE_METADATA      = True
@@ -132,6 +134,7 @@ def print_config():
 
     print("---------------------------------------")
 
+
 def write_pickle(tresor, stacked_images):
     print("dump the pickle...")
     pick = {}
@@ -140,6 +143,7 @@ def write_pickle(tresor, stacked_images):
 
     pickle.dump(pick, open(PICKLE_NAME, "wb"))
     del pick
+
 
 def save():
 
@@ -275,6 +279,7 @@ def _intensity(shutter, aperture, iso):
 
     return shutter_repr + aperture_repr + iso_repr
 
+
 def calculate_brightness_curve(images):
     curve = []
 
@@ -338,6 +343,11 @@ def _sort_helper(value):
     pos = value.index(".")
     number = value[6:pos]
     return int(number)
+
+
+def _plot(mat):
+    # plot a numpy array with matplotlib
+    plt.imshow(cv2.bitwise_not(cv2.cvtColor(np.asarray(mat, np.uint16), cv2.COLOR_RGB2BGR)), interpolation="nearest")
 
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
@@ -404,11 +414,16 @@ if DIMENSIONS is None:
 tresor = np.zeros((DIMENSIONS[1], DIMENSIONS[0], 3), dtype=np.uint64)
 stop_time("initialization: {}{}")
 
+# Curve
 curve = brightness_index = calculate_brightness_curve(input_images)
 stop_time("compute brightness curve: {}{}")
 
 if DISPLAY_CURVE:
     display_curve(curve)
+
+# Peaking
+peaking_display_mask = np.zeros((shape[0], shape[1]))
+peaking_plot = plt.imshow(peaking_display_mask, cmap="Greys", vmin=0, vmax=1)
 
 for f in input_images:
 
@@ -439,6 +454,11 @@ for f in input_images:
         mask_avg = np.logical_and(mask_rgb[:,:,0], mask_rgb[:,:,1], mask_rgb[:,:,2])
 
         data[mask_avg] = 0
+
+        if DISPLAY_PEAKING:
+            peaking_display_mask = np.logical_or(peaking_display_mask, mask_avg)
+            peaking_plot.set_data(peaking_display_mask)
+            # TODO: redraw
 
         tresor = np.add(tresor, data * PEAKING_MUL_FACTOR)
         stopwatch["peaking"] += stop_time()
