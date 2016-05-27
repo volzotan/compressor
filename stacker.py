@@ -69,6 +69,7 @@ PICKLE_NAME         = "stack.pickle"
 INPUT_DIRECTORY     = "images"
 RESULT_DIRECTORY    = "stack"
 DIMENSIONS          = None #(4896, 3264) #(6000, 4000) #(5184, 3136) #(1200, 545)
+NAMING_PREFIX       = "bodemuseum2"
 EXTENSION           = ".tif"
 
 CHANGE_BRIGHTNESS   = False # should brightness_increase be applied?
@@ -119,6 +120,7 @@ def print_config():
     "directories:",
     "   input: {}".format(INPUT_DIRECTORY),
     "   output: {}".format(RESULT_DIRECTORY),
+    "   prefix: {}".format(NAMING_PREFIX),
     "extension: {}".format(EXTENSION),
     "",
     "modifications:",
@@ -157,7 +159,11 @@ def save():
     timediff = endtime - timer
     timer = datetime.datetime.now()
 
-    filepath = os.path.join(RESULT_DIRECTORY, str(counter) + EXTENSION)
+    filename = str(counter) + EXTENSION
+    if len(NAMING_PREFIX) > 0:
+        filename = NAMING_PREFIX + "_" + filename
+
+    filepath = os.path.join(RESULT_DIRECTORY, filename)
 
     if APPLY_CURVE:
         t = tresor / (divider + (divider * curve_avg) )
@@ -291,9 +297,9 @@ def calculate_brightness_curve(images):
         iso     = metadata["Exif.Photo.ISOSpeedRatings"].value
 
         try: 
-            time    = metadata["Exif.Image.DateTimeOriginal"].value
+            time = metadata["Exif.Image.DateTimeOriginal"].value
         except KeyError as e:
-            time    = metadata["Exif.Image.DateTime"].value
+            time = metadata["Exif.Image.DateTime"].value
 
         try:
             aperture = float(metadata["Exif.Photo.ApertureValue"].value)
