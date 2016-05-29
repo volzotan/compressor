@@ -174,7 +174,10 @@ class Stacker(object):
         timeperimage -= self.stopwatch["write_image"]
         timeperimage /= self.counter
 
-        print("saved. counter: {} time total: {} saving image: {} time per image: {}".format(self.counter, datetime.datetime.now()-self.starttime, self.stopwatch["write_image"]/self.counter, timeperimage))
+        images_remaining = (self.LIMIT - self.counter) 
+        est_remaining = images_remaining * timeperimage + ( (images_remaining/self.SAVE_INTERVAL) * (self.stopwatch["write_image"]/self.counter) )
+
+        print("saved. counter: {} time total: {} saving image: {} time per image: {} est. remaining: {}".format(self.counter, datetime.datetime.now()-self.starttime, self.stopwatch["write_image"]/self.counter, timeperimage, est_remaining))
         #print self.stopwatch
         return filepath
 
@@ -408,7 +411,7 @@ class Stacker(object):
         self.stop_time("compute brightness curve: {}{}")
 
         if self.DISPLAY_CURVE:
-            self.display_curve(curve)
+            self.display_curve(self.curve)
 
         # Peaking
         #peaking_display_mask = np.zeros((shape[0], shape[1]))
