@@ -330,15 +330,10 @@ def calculate_brightness_curve(images):
 
 
 def display_curve(curve):
-    #plt.rcdefaults()
-
     dates = [i[1] for i in curve]
     values = [i[3] for i in curve]
 
-    print values
-
     plt.plot(dates, values)
-
     plt.show()
 
 
@@ -428,8 +423,8 @@ if DISPLAY_CURVE:
     display_curve(curve)
 
 # Peaking
-peaking_display_mask = np.zeros((shape[0], shape[1]))
-peaking_plot = plt.imshow(peaking_display_mask, cmap="Greys", vmin=0, vmax=1)
+#peaking_display_mask = np.zeros((shape[0], shape[1]))
+#peaking_plot = plt.imshow(peaking_display_mask, cmap="Greys", vmin=0, vmax=1)
 
 for f in input_images:
 
@@ -454,7 +449,7 @@ for f in input_images:
 
     if APPLY_PEAKING:
         # calculate boolean mask for every color channel
-        mask_rgb = data[:,:,:] < PEAKING_THRESHOLD
+        mask_rgb = data < 140 #PEAKING_THRESHOLD
 
         # combine mask via AND
         mask_avg = np.logical_and(mask_rgb[:,:,0], mask_rgb[:,:,1], mask_rgb[:,:,2])
