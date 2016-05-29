@@ -54,52 +54,38 @@ import math
 
 class Stacker(object):
 
-    starttime = datetime.datetime.now()
-    timer = datetime.datetime.now()
+    NAMING_PREFIX       = "humboldt"
+    INPUT_DIRECTORY     = "images"
+    RESULT_DIRECTORY    = "stack_" + NAMING_PREFIX
+    DIMENSIONS          = None # (length, width)
+    EXTENSION           = ".tif"
 
-    def stop_time(msg=None):
-        global timer
-        seconds = (datetime.datetime.now() - timer).total_seconds()
-        if msg is not None:
-            if seconds >= 0.1:
-                print(msg.format(seconds, "s"))  
-            else: # milliseconds
-                print(msg.format(seconds * 1000, "ms"))  
+    BASE_DIR            = None
 
-        timer = datetime.datetime.now()
+    PICKLE_NAME         = "stack.pickle"
 
-        return seconds
+    CHANGE_BRIGHTNESS   = False # should brightness_increase be applied?
+    BRIGHTNESS_INCREASE = 0.80  # the less the brighter: divider * BRIGHTNESS_INCREASE
+
+    DISPLAY_CURVE       = False
+    APPLY_CURVE         = False
+
+    DISPLAY_PEAKING     = False
+    APPLY_PEAKING       = False
+    PEAKING_THRESHOLD   = 200 # TODO: don't use fixed values
+    PEAKING_MUL_FACTOR  = 1.0
+
+    WRITE_METADATA      = True
+    SORT_IMAGES         = True
+
+    SAVE_INTERVAL       = 1
+    PICKLE_INTERVAL     = -1
+
+    DEBUG               = False
 
     # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
     def __init__(self):
-        self.NAMING_PREFIX       = "humboldt"
-        self.INPUT_DIRECTORY     = "images"
-        self.RESULT_DIRECTORY    = "stack_" + NAMING_PREFIX
-        self.DIMENSIONS          = None # (length, width)
-        self.EXTENSION           = ".tif"
-
-        self.PICKLE_NAME         = "stack.pickle"
-
-        self.CHANGE_BRIGHTNESS   = False # should brightness_increase be applied?
-        self.BRIGHTNESS_INCREASE = 0.80  # the less the brighter: divider * BRIGHTNESS_INCREASE
-
-        self.DISPLAY_CURVE       = False
-        self.APPLY_CURVE         = False
-
-        self.DISPLAY_PEAKING     = False
-        self.APPLY_PEAKING       = False
-        self.PEAKING_THRESHOLD   = 200 # TODO: don't use fixed values
-        self.PEAKING_MUL_FACTOR  = 1.0
-
-        self.WRITE_METADATA      = True
-        self.SORT_IMAGES         = True
-
-        self.SAVE_INTERVAL       = 5
-        self.PICKLE_INTERVAL     = -1
-
-        self.DEBUG               = False
-
         #data               = json.load(open("export.json", "rb"))
 
         self.counter             = 0
@@ -119,25 +105,28 @@ class Stacker(object):
             "write_image": 0
         }
 
+        self.starttime = datetime.datetime.now()
+        self.timer = datetime.datetime.now()
+
         self.tresor = None
 
     # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
-    def print_config():
+    def print_config(self):
 
         config = [
         "directories:",
-        "   input: {}".format(INPUT_DIRECTORY),
-        "   output: {}".format(RESULT_DIRECTORY),
-        "   prefix: {}".format(NAMING_PREFIX),
-        "extension: {}".format(EXTENSION),
+        "   input: {}".format(self.INPUT_DIRECTORY),
+        "   output: {}".format(self.RESULT_DIRECTORY),
+        "   prefix: {}".format(self.NAMING_PREFIX),
+        "extension: {}".format(self.EXTENSION),
         "",
         "modifications:",
-        "   curve: {}".format(APPLY_CURVE),
-        "   peaking: {}".format(APPLY_PEAKING),
+        "   curve: {}".format(self.APPLY_CURVE),
+        "   peaking: {}".format(self.APPLY_PEAKING),
         "",
-        "save interval: {}".format(SAVE_INTERVAL),
-        "pickle interval: {}".format(PICKLE_INTERVAL)
+        "save interval: {}".format(self.SAVE_INTERVAL),
+        "pickle interval: {}".format(self.PICKLE_INTERVAL)
         ]
 
         for line in config:
@@ -146,50 +135,50 @@ class Stacker(object):
         print("---------------------------------------")
 
 
-    def write_pickle(tresor, stacked_images):
+    def write_pickle(self, tresor, stacked_images):
         print("dump the pickle...")
         pick = {}
         pick["stacked_images"] = stacked_images
         pick["tresor"]         = tresor
 
-        pickle.dump(pick, open(PICKLE_NAME, "wb"))
+        pickle.dump(pick, open(self.PICKLE_NAME, "wb"))
         del pick
 
 
-    def save():
+    def save(self):
 
-        divider = int(round(counter * BRIGHTNESS_INCREASE, 0)) if CHANGE_BRIGHTNESS else counter
+        divider = int(round(self.counter * self.BRIGHTNESS_INCREASE, 0)) if self.CHANGE_BRIGHTNESS else self.counter
 
-        endtime = datetime.datetime.now()
-        timediff = endtime - timer
-        timer = datetime.datetime.now()
+        self.endtime = datetime.datetime.now()
+        timediff = self.endtime - self.timer
+        self.timer = datetime.datetime.now()
 
-        filename = str(counter) + EXTENSION
-        if len(NAMING_PREFIX) > 0:
-            filename = NAMING_PREFIX + "_" + filename
+        filename = str(self.counter) + self.EXTENSION
+        if len(self.NAMING_PREFIX) > 0:
+            filename = self.NAMING_PREFIX + "_" + filename
 
-        filepath = os.path.join(RESULT_DIRECTORY, filename)
+        filepath = os.path.join(self.RESULT_DIRECTORY, filename)
 
-        if APPLY_CURVE:
-            t = tresor / (divider + (divider * curve_avg) )
+        if self.APPLY_CURVE:
+            t = self.tresor / (divider + (divider * self.curve_avg) )
         else:
-            t = tresor / (divider)
+            t = self.tresor / (divider)
 
         # convert to uint16 for saving, 0.5s faster than usage of t.astype(np.uint16)
         s = np.asarray(t, np.uint16)
         cv2.imwrite(filepath, s)
 
-        timeperimage = (timediff/processed).total_seconds() if processed != 0 else 0
-        processed    = 0 # reset
+        timeperimage    = (timediff/self.processed).total_seconds() if self.processed != 0 else 0
+        self.processed  = 0 # reset
 
-        save_time = stop_time()
+        save_time = self.stop_time()
 
-        print("saved. counter: {} time total: {} saving image: {} time per image: {}".format(counter, timediff, save_time, timeperimage))
-        stopwatch["write_image"] += save_time
+        print("saved. counter: {} time total: {} saving image: {} time per image: {}".format(self.counter, timediff, save_time, timeperimage))
+        self.stopwatch["write_image"] += save_time
         return filepath
 
 
-    def read_metadata(images):
+    def read_metadata(self, images):
         info = {}
 
         # exposure time
@@ -197,7 +186,7 @@ class Stacker(object):
         latest_image    = None
 
         for image in images:
-            metadata = pyexiv2.ImageMetadata(os.path.join(INPUT_DIRECTORY, image))
+            metadata = pyexiv2.ImageMetadata(os.path.join(self.INPUT_DIRECTORY, image))
             metadata.read()
 
             timetaken = metadata["Exif.Photo.DateTimeOriginal"].value
@@ -225,7 +214,7 @@ class Stacker(object):
         info["exposure_count"] = len(images)
 
         # focal length
-        metadata = pyexiv2.ImageMetadata(os.path.join(INPUT_DIRECTORY, images[0]))
+        metadata = pyexiv2.ImageMetadata(os.path.join(self.INPUT_DIRECTORY, images[0]))
         metadata.read()
         try:
             info["focal_length"] = metadata["Exif.Photo.FocalLength"].value
@@ -235,7 +224,7 @@ class Stacker(object):
 
         # compressor version
         try:
-            info["version"] = subprocess.check_output(["git", "describe", "--always"], cwd=BASE_DIR)
+            info["version"] = subprocess.check_output(["git", "describe", "--always"], cwd=self.BASE_DIR)
             if info["version"][-1] == "\n":
                 info["version"] = info["version"][:-1]
         except Exception as e:
@@ -248,7 +237,7 @@ class Stacker(object):
         return info
 
 
-    def write_metadata(filepath, info):
+    def write_metadata(self, filepath, info):
         metadata = pyexiv2.ImageMetadata(filepath)
         metadata.read()
 
@@ -273,7 +262,7 @@ class Stacker(object):
         print("metadata written to {}".format(filepath))
 
 
-    def _intensity(shutter, aperture, iso):
+    def _intensity(self, shutter, aperture, iso):
 
         # limits in this calculations:
         # min shutter is 1/4000th second
@@ -291,11 +280,11 @@ class Stacker(object):
         return shutter_repr + aperture_repr + iso_repr
 
 
-    def calculate_brightness_curve(images):
+    def calculate_brightness_curve(self, images):
         curve = []
 
         for image in images:
-            metadata = pyexiv2.ImageMetadata(os.path.join(INPUT_DIRECTORY, image))
+            metadata = pyexiv2.ImageMetadata(os.path.join(self.INPUT_DIRECTORY, image))
             metadata.read()
 
             shutter = float(metadata["Exif.Photo.ExposureTime"].value)
@@ -312,7 +301,7 @@ class Stacker(object):
                 # no aperture tag set, probably an lens adapter was used. assume fixed aperture.
                 aperture = None
 
-            curve.append((image, time, _intensity(shutter, aperture, iso)))
+            curve.append((image, time, self._intensity(shutter, aperture, iso)))
 
         # normalize
         values = [x[2] for x in curve]
@@ -327,14 +316,13 @@ class Stacker(object):
             #           image name   time         relative brightness value [0;1]                                   inverted absolute value
             curve[i] = (curve[i][0], curve[i][1], np.interp(curve[i][2], [min_brightness, max_brightness], [1, 0]), np.interp(curve[i][2], [min_brightness, max_brightness], [max_brightness, min_brightness]))
 
-        global curve_avg
         values = [x[2] for x in curve]
-        curve_avg = sum(values) / float(len(values))
+        self.curve_avg = sum(values) / float(len(values))
 
         return curve
 
 
-    def display_curve(curve):
+    def display_curve(self, curve):
         dates = [i[1] for i in curve]
         values = [i[3] for i in curve]
 
@@ -342,7 +330,20 @@ class Stacker(object):
         plt.show()
 
 
-    def _sort_helper(value):
+    def stop_time(self, msg=None):
+        seconds = (datetime.datetime.now() - self.timer).total_seconds()
+        if msg is not None:
+            if seconds >= 0.1:
+                print(msg.format(seconds, "s"))  
+            else: # milliseconds
+                print(msg.format(seconds * 1000, "ms"))  
+
+        timer = datetime.datetime.now()
+
+        return seconds
+
+
+    def _sort_helper(self, value):
 
         # still_123.jpg
 
@@ -351,109 +352,82 @@ class Stacker(object):
         return int(number)
 
 
-    def _plot(mat):
+    def _plot(self, mat):
         # plot a numpy array with matplotlib
         plt.imshow(cv2.bitwise_not(cv2.cvtColor(np.asarray(mat, np.uint16), cv2.COLOR_RGB2BGR)), interpolation="nearest")
 
     # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
-    def run(self):
-        # transform to absolute paths
-        BASE_DIR = os.path.dirname(os.path.realpath(__file__))
+    def run(self, inp_imgs):
 
-        if not INPUT_DIRECTORY.startswith("/"):
-            INPUT_DIRECTORY = os.path.join(BASE_DIR, INPUT_DIRECTORY)
-
-        if not RESULT_DIRECTORY.startswith("/"):
-            RESULT_DIRECTORY = os.path.join(BASE_DIR, RESULT_DIRECTORY)
-
-        # check or create RESULT_DIRECTORY
-        if not os.path.exists(RESULT_DIRECTORY):
-            os.makedirs(RESULT_DIRECTORY)
-
-        print_config()
+        self.input_images = inp_imgs
 
         # load pickle and init variables
         try:
-            pick = pickle.load(open(PICKLE_NAME, "rb"))
+            pick = pickle.load(open(self.PICKLE_NAME, "rb"))
             stacked_images = pick["stacked_images"]
             tresor = pick["tresor"]
             print("pickle loaded. resume with {} images".format(len(stacked_images)))
         except Exception as e:
             print(str(e))
 
-        stop_time("pickle loading: {}{}")
+        self.stop_time("pickle loading: {}{}")
 
-        # get all file names
-        for root, dirs, files in os.walk(INPUT_DIRECTORY):
-            for f in files:
+        self.LIMIT = 2# len(self.input_images)
 
-                if f == ".DS_Store":
-                    continue
-
-                if not f.lower().endswith(EXTENSION):
-                    continue
-
-                if os.path.getsize(os.path.join(INPUT_DIRECTORY, f)) < 100:
-                    continue
-
-                input_images.append(f)
-
-        LIMIT = len(input_images)
-
-        if LIMIT <= 0:
+        if self.LIMIT <= 0:
             print("no images found. exit.")
             sys.exit(-1)
 
-        stop_time("searching for files: {}{}")
-        print("number of images: {}".format(LIMIT))
+        self.stop_time("searching for files: {}{}")
+        print("number of images: {}".format(self.LIMIT))
 
-        if SORT_IMAGES:
-            input_images = sorted(input_images, key=_sort_helper)
+        if self.SORT_IMAGES:
+            self.input_images = sorted(self.input_images, key=self._sort_helper)
 
-        if WRITE_METADATA:
-            metadata = read_metadata(input_images)
+        if self.WRITE_METADATA:
+            self.metadata = self.read_metadata(self.input_images)
 
-        if DIMENSIONS is None:
-            shape = cv2.imread(os.path.join(INPUT_DIRECTORY, input_images[0])).shape
-            DIMENSIONS = (shape[1], shape[0])
+        if self.DIMENSIONS is None:
+            shape = cv2.imread(os.path.join(self.INPUT_DIRECTORY, self.input_images[0])).shape
+            self.DIMENSIONS = (shape[1], shape[0])
 
-        tresor = np.zeros((DIMENSIONS[1], DIMENSIONS[0], 3), dtype=np.uint64)
-        stop_time("initialization: {}{}")
+        self.tresor = np.zeros((self.DIMENSIONS[1], self.DIMENSIONS[0], 3), dtype=np.uint64)
+        self.stop_time("initialization: {}{}")
 
         # Curve
-        curve = brightness_index = calculate_brightness_curve(input_images)
-        stop_time("compute brightness curve: {}{}")
+        self.curve = brightness_index = self.calculate_brightness_curve(self.input_images)
+        self.stop_time("compute brightness curve: {}{}")
 
-        if DISPLAY_CURVE:
-            display_curve(curve)
+        if self.DISPLAY_CURVE:
+            self.display_curve(curve)
 
         # Peaking
         #peaking_display_mask = np.zeros((shape[0], shape[1]))
         #peaking_plot = plt.imshow(peaking_display_mask, cmap="Greys", vmin=0, vmax=1)
 
-        for f in input_images:
+        for f in self.input_images:
 
-            counter += 1
+            self.counter += 1
 
-            if f in stacked_images:
+            if f in self.stacked_images:
                 continue
 
             # 3: read input as 16bit color TIFF
-            im = cv2.imread(os.path.join(INPUT_DIRECTORY, f), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
-            stopwatch["load_image"] += stop_time()
+            im = cv2.imread(os.path.join(self.INPUT_DIRECTORY, f), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
+            self.stopwatch["load_image"] += self.stop_time()
 
             # data = np.array(im, np.int) # 100ms slower per image
             data = np.uint64(np.asarray(im, np.uint64))
-            stopwatch["convert_to_array"] += stop_time()
-            tresor = np.add(tresor, data)
-            stopwatch["adding"] += stop_time()
+            self.stopwatch["convert_to_array"] += self.stop_time()
+            self.tresor = np.add(self.tresor, data)
+            self.stopwatch["adding"] += self.stop_time()
 
-            if APPLY_CURVE:
-                tresor = np.add(tresor, data * curve[counter][1])
-                stopwatch["curve"] += stop_time()
+            if self.APPLY_CURVE:
+                self.tresor = np.add(tresor, data * curve[counter][1])
+                self.stopwatch["curve"] += self.stop_time()
 
-            if APPLY_PEAKING:
+            if self.APPLY_PEAKING:
                 # calculate boolean mask for every color channel
                 mask_rgb = data < 140 #PEAKING_THRESHOLD
 
@@ -462,32 +436,32 @@ class Stacker(object):
 
                 data[mask_avg] = 0
 
-                if DISPLAY_PEAKING:
+                if self.DISPLAY_PEAKING:
                     peaking_display_mask = np.logical_or(peaking_display_mask, mask_avg)
                     peaking_plot.set_data(peaking_display_mask)
                     # TODO: redraw
 
-                tresor = np.add(tresor, data * PEAKING_MUL_FACTOR)
-                stopwatch["peaking"] += stop_time()
+                self.tresor = np.add(self.tresor, data * PEAKING_MUL_FACTOR)
+                self.stopwatch["peaking"] += self.stop_time()
 
-            stacked_images.append(f)
+            self.stacked_images.append(f)
 
-            processed += 1
+            self.processed += 1
 
-            if counter >= LIMIT:
-                if PICKLE_INTERVAL > 0:
-                    write_pickle(tresor, stacked_images)
+            if self.counter >= self.LIMIT:
+                if self.PICKLE_INTERVAL > 0:
+                    self.write_pickle(tresor, stacked_images)
                 break
 
-            if PICKLE_INTERVAL > 0 and counter % PICKLE_INTERVAL == 0:
-                write_pickle(tresor, stacked_images)
+            if self.PICKLE_INTERVAL > 0 and self.counter % self.PICKLE_INTERVAL == 0:
+                self.write_pickle(tresor, stacked_images)
 
-            if SAVE_INTERVAL > 0 and counter % SAVE_INTERVAL == 0:
-                save()
+            if self.SAVE_INTERVAL > 0 and self.counter % self.SAVE_INTERVAL == 0:
+                self.save()
 
-        filepath = save()
-        if WRITE_METADATA:
-            write_metadata(filepath, metadata)
+        filepath = self.save()
+        if self.WRITE_METADATA:
+            self.write_metadata(filepath, self.metadata)
 
-        print("finished. time total: {}".format(datetime.datetime.now() - starttime))
+        print("finished. time total: {}".format(datetime.datetime.now() - self.starttime))
         sys.exit(0)
