@@ -15,6 +15,8 @@ import pyexiv2
 from fractions import Fraction
 import math
 
+import support
+
 
 """
     Stacker loads every image in INPUT_DIRECTORY,
@@ -105,9 +107,6 @@ class Stacker(object):
             "write_image": 0
         }
 
-        self.starttime = datetime.datetime.now()
-        self.timer = datetime.datetime.now()
-
         self.tresor = None
 
     # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
@@ -115,22 +114,25 @@ class Stacker(object):
     def print_config(self):
 
         config = [
-        "directories:",
-        "   input: {}".format(self.INPUT_DIRECTORY),
-        "   output: {}".format(self.RESULT_DIRECTORY),
-        "   prefix: {}".format(self.NAMING_PREFIX),
-        "extension: {}".format(self.EXTENSION),
-        "",
-        "modifications:",
-        "   curve: {}".format(self.APPLY_CURVE),
-        "   peaking: {}".format(self.APPLY_PEAKING),
-        "",
-        "save interval: {}".format(self.SAVE_INTERVAL),
-        "pickle interval: {}".format(self.PICKLE_INTERVAL)
+        ("directories:", ""),
+        ("   input:  {}", self.INPUT_DIRECTORY),
+        ("   output: {}", self.RESULT_DIRECTORY),
+        ("   prefix: {}", self.NAMING_PREFIX),
+        ("extension: {}", self.EXTENSION),
+        (" ", " "),
+        ("modifications:", ""),
+        ("   curve:   {}", str(self.APPLY_CURVE)),
+        ("   peaking: {}", str(self.APPLY_PEAKING)),
+        (" ", " "),
+        ("save interval:   {}", str(self.SAVE_INTERVAL)),
+        ("pickle interval: {}", str(self.PICKLE_INTERVAL))
         ]
 
         for line in config:
-            print line
+            if len(line) > 1:
+                print line[0].format(support.Color.BOLD + line[1] + support.Color.END)
+            else:
+                print line
 
         print("---------------------------------------")
 
@@ -149,10 +151,6 @@ class Stacker(object):
 
         divider = int(round(self.counter * self.BRIGHTNESS_INCREASE, 0)) if self.CHANGE_BRIGHTNESS else self.counter
 
-        self.endtime = datetime.datetime.now()
-        timediff = self.endtime - self.timer
-        self.timer = datetime.datetime.now()
-
         filename = str(self.counter) + self.EXTENSION
         if len(self.NAMING_PREFIX) > 0:
             filename = self.NAMING_PREFIX + "_" + filename
@@ -168,13 +166,16 @@ class Stacker(object):
         s = np.asarray(t, np.uint16)
         cv2.imwrite(filepath, s)
 
-        timeperimage    = (timediff/self.processed).total_seconds() if self.processed != 0 else 0
-        self.processed  = 0 # reset
+        self.stopwatch["write_image"] += self.stop_time()
 
-        save_time = self.stop_time()
+        timeperimage = 0
+        for key in self.stopwatch:
+            timeperimage += self.stopwatch[key]
+        timeperimage -= self.stopwatch["write_image"]
+        timeperimage /= self.counter
 
-        print("saved. counter: {} time total: {} saving image: {} time per image: {}".format(self.counter, timediff, save_time, timeperimage))
-        self.stopwatch["write_image"] += save_time
+        print("saved. counter: {} time total: {} saving image: {} time per image: {}".format(self.counter, datetime.datetime.now()-self.starttime, self.stopwatch["write_image"]/self.counter, timeperimage))
+        #print self.stopwatch
         return filepath
 
 
@@ -338,9 +339,13 @@ class Stacker(object):
             else: # milliseconds
                 print(msg.format(seconds * 1000, "ms"))  
 
-        timer = datetime.datetime.now()
+        self.timer = datetime.datetime.now()
 
         return seconds
+
+
+    def reset_timer(self):
+        self.timer = datetime.datetime.now()
 
 
     def _sort_helper(self, value):
@@ -362,18 +367,21 @@ class Stacker(object):
 
         self.input_images = inp_imgs
 
+        self.starttime = datetime.datetime.now()
+        self.timer = datetime.datetime.now()
+
         # load pickle and init variables
         try:
             pick = pickle.load(open(self.PICKLE_NAME, "rb"))
-            stacked_images = pick["stacked_images"]
-            tresor = pick["tresor"]
+            self.stacked_images = pick["stacked_images"]
+            self.tresor = pick["tresor"]
             print("pickle loaded. resume with {} images".format(len(stacked_images)))
         except Exception as e:
             print(str(e))
 
         self.stop_time("pickle loading: {}{}")
 
-        self.LIMIT = 2# len(self.input_images)
+        self.LIMIT = len(self.input_images)
 
         if self.LIMIT <= 0:
             print("no images found. exit.")
@@ -396,7 +404,7 @@ class Stacker(object):
         self.stop_time("initialization: {}{}")
 
         # Curve
-        self.curve = brightness_index = self.calculate_brightness_curve(self.input_images)
+        self.curve = self.calculate_brightness_curve(self.input_images)
         self.stop_time("compute brightness curve: {}{}")
 
         if self.DISPLAY_CURVE:
@@ -446,8 +454,6 @@ class Stacker(object):
 
             self.stacked_images.append(f)
 
-            self.processed += 1
-
             if self.counter >= self.LIMIT:
                 if self.PICKLE_INTERVAL > 0:
                     self.write_pickle(tresor, stacked_images)
@@ -455,6 +461,7 @@ class Stacker(object):
 
             if self.PICKLE_INTERVAL > 0 and self.counter % self.PICKLE_INTERVAL == 0:
                 self.write_pickle(tresor, stacked_images)
+                self.reset_timer()
 
             if self.SAVE_INTERVAL > 0 and self.counter % self.SAVE_INTERVAL == 0:
                 self.save()

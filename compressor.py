@@ -60,9 +60,10 @@ for root, dirs, files in os.walk(INPUT_DIR):
 # print len(input_images)
 
 # init stacker
-stacker.INPUT_DIRECTORY = INPUT_DIR
-stacker.RESULT_DIRECTORY = OUTPUT_DIR_STACKED
-stacker.BASE_DIR = BASE_DIR
+stacker.INPUT_DIRECTORY     = INPUT_DIR
+stacker.NAMING_PREFIX       = NAMING_PREFIX
+stacker.RESULT_DIRECTORY    = OUTPUT_DIR_STACKED
+stacker.BASE_DIR            = BASE_DIR
 
 stacker.print_config()
 stacker.run(input_images)
