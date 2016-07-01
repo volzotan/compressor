@@ -80,7 +80,7 @@ class Stacker(object):
     WRITE_METADATA      = True
     SORT_IMAGES         = True
 
-    SAVE_INTERVAL       = 1
+    SAVE_INTERVAL       = 15
     PICKLE_INTERVAL     = -1
 
     DEBUG               = False
@@ -168,6 +168,8 @@ class Stacker(object):
 
         self.stopwatch["write_image"] += self.stop_time()
 
+        # time calculations
+
         timeperimage = 0
         for key in self.stopwatch:
             timeperimage += self.stopwatch[key]
@@ -177,7 +179,9 @@ class Stacker(object):
         images_remaining = (self.LIMIT - self.counter) 
         est_remaining = images_remaining * timeperimage + ( (images_remaining/self.SAVE_INTERVAL) * (self.stopwatch["write_image"]/self.counter) )
 
-        print("saved. counter: {} time total: {} saving image: {} time per image: {} est. remaining: {}".format(self.counter, datetime.datetime.now()-self.starttime, self.stopwatch["write_image"]/self.counter, timeperimage, est_remaining))
+        save_time = self.stopwatch["write_image"]/(self.counter/self.SAVE_INTERVAL)
+
+        print("saved. counter: {0:.0f} time total: {1:.2f} saving image: {2:.2f} time per image: {3:.2f} est. remaining: {4:.2f}".format(self.counter, (datetime.datetime.now()-self.starttime).total_seconds(), save_time, timeperimage, est_remaining))
         #print self.stopwatch
         return filepath
 

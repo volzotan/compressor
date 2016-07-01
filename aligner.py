@@ -16,7 +16,7 @@ OUTPUT_STR += "time_align {7:>.1f}"
 class Aligner(object):
 
     # Paths
-    REFERENCE_IMAGE                 = "images/DSCF7390.tif"
+    REFERENCE_IMAGE                 = "images/DSCF7634.tif"
     EXTENSION                       = ".tif"
 
     INPUT_DIR                       = "images"
@@ -49,6 +49,8 @@ class Aligner(object):
         self.failed              = 0
         self.outlier             = 0
         
+
+    def init(self):
         # Read the reference image (as 8bit for the ECC algorithm)
         self.reference_image = cv2.imread(self.REFERENCE_IMAGE)
 
@@ -312,9 +314,13 @@ if __name__ == "__main__":
 
                 ls.append(f)
 
-        Aligner().step1(ls)
+        aligner = Aligner()
+        aligner.init()
+        aligner.step1(ls)
     elif sys.argv[1] == "step2":
-        Aligner().step2()
+        aligner = Aligner()
+        aligner.init()
+        aligner.step2()
     else:
         print("illegal argument. exit.")
         

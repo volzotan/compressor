@@ -7,18 +7,37 @@ import os
 import sys
 import support
 
-INPUT_DIR           = "images_hbf1"
-OUTPUT_DIR_STACKED  = "foo"
-EXTENSION           = ".tif"
+INPUT_DIR_ALIGNER   = "export"
+TRANSLATION_DATA    = "translation_data.json"
+OUTPUT_DIR_ALIGNER  = "aligned"
 
+NAMING_PREFIX       = "m18"
+INPUT_DIR_STACKER   = OUTPUT_DIR_ALIGNER
+OUTPUT_DIR_STACKER  = "stack_" + NAMING_PREFIX + "2"
+EXTENSION           = ".jpg"
 
 def print_config():
     pass
 
+def path_check_and_expand(path):
+
+
+    if not (path.startswith("/") or path.startswith("~")):
+        path = os.path.join(BASE_DIR, path)
+
+    if path.startswith("~"):
+        path = os.path.expanduser(path)
+
+    return path
+
+def create_if_not_existing(path):
+    if not os.path.exists(path):
+        print("created directoy: {}".format(path))
+        os.makedirs(path)
 
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
-#aligner = Aligner()
+aligner = Aligner()
 stacker = Stacker()
 input_images = []
 
@@ -27,20 +46,18 @@ BASE_DIR = os.path.dirname(os.path.realpath(__file__))
 
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
-if not (INPUT_DIR.startswith("/") or INPUT_DIR.startswith("~")):
-    INPUT_DIR = os.path.join(BASE_DIR, INPUT_DIR)
-
-if not (OUTPUT_DIR_STACKED.startswith("/") or OUTPUT_DIR_STACKED.startswith("~")):
-    OUTPUT_DIR_STACKED = os.path.join(BASE_DIR, OUTPUT_DIR_STACKED)
+INPUT_DIR_ALIGNER   = path_check_and_expand(INPUT_DIR_ALIGNER)
+INPUT_DIR_STACKER   = path_check_and_expand(INPUT_DIR_STACKER)
+OUTPUT_DIR_STACKER  = path_check_and_expand(OUTPUT_DIR_STACKER)
+OUTPUT_DIR_ALIGNER  = path_check_and_expand(OUTPUT_DIR_ALIGNER)
+TRANSLATION_DATA    = path_check_and_expand(TRANSLATION_DATA)
 
 if not os.path.exists(INPUT_DIR):
     print("INPUT_DIR not found: {}".format(support.Color.BOLD + INPUT_DIR + support.Color.END))
     sys.exit(-1)
 
-# check or create OUTPUT_DIR_STACKED
-if not os.path.exists(OUTPUT_DIR_STACKED):
-    print("created OUTPUT_DIR_STACKED: {}".format(OUTPUT_DIR_STACKED))
-    os.makedirs(OUTPUT_DIR_STACKED)
+create_if_not_existing(OUTPUT_DIR_STACKED)
+create_if_not_existing(OUTPUT_DIR_ALIGNED)
 
 # get all file names
 for root, dirs, files in os.walk(INPUT_DIR):
@@ -59,10 +76,21 @@ for root, dirs, files in os.walk(INPUT_DIR):
 
 # print len(input_images)
 
+# init aligner
+aligner.REFERENCE_IMAGE                 = "/Users/volzotan/Desktop/export/DSC03135.jpg"
+aligner.INPUT_DIR                       = INPUT_DIR_ALIGNER
+aligner.OUTPUT_DIR                      = OUTPUT_DIR_ALIGNER
+aligner.EXTENSION                       = EXTENSION
+aligner.TRANSLATION_DATA                = TRANSLATION_DATA
+aligner.USE_CORRECTED_TRANSLATION_DATA  = True
+
+#aligner.init()
+#aligner.step2()
+
 # init stacker
-stacker.INPUT_DIRECTORY     = INPUT_DIR
+stacker.INPUT_DIRECTORY     = INPUT_DIR_STACKER
 stacker.NAMING_PREFIX       = NAMING_PREFIX
-stacker.RESULT_DIRECTORY    = OUTPUT_DIR_STACKED
+stacker.RESULT_DIRECTORY    = OUTPUT_DIR_STACKER
 stacker.BASE_DIR            = BASE_DIR
 stacker.EXTENSION           = EXTENSION
 
