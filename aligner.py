@@ -313,6 +313,23 @@ class Aligner(object):
             return im[290:3426, 0:5184]
 
 
+    """
+    That's something tricky here. What if I want to know if one alignment process
+    yields better results than another? 
+    This function can be called externally (e.g. compressor.py).
+
+    """
+    def compare_sharpness(self, path1, path2):
+        im1 = self._get_gradient(cv2.imread(path1))
+        im2 = self._get_gradient(cv2.imread(path2))
+
+        # cv2.imshow("1", grad_x)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
+
+        print("img: {} means: {}".format(path1, cv2.mean(im1)))
+        print("img: {} means: {}".format(path2, cv2.mean(im2)))
+
 
 if __name__ == "__main__":
 
