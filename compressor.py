@@ -96,7 +96,8 @@ aligner.RESET_MATRIX_EVERY_LOOP         = False
 aligner.DOWNSIZE                        = False
 
 aligner.init()
-aligner.step1(input_images_aligner)
+#aligner.step1(input_images_aligner)
+#aligner.step2()
 
 # init stacker
 stacker.INPUT_DIRECTORY     = config.INPUT_DIR_STACKER
@@ -106,4 +107,4 @@ stacker.BASE_DIR            = BASE_DIR
 stacker.EXTENSION           = config.EXTENSION
 
 #stacker.print_config()
-#stacker.run(input_images)
+stacker.run(input_images_stacker)
