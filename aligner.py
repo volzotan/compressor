@@ -34,6 +34,7 @@ class Aligner(object):
     RESET_MATRIX_EVERY_LOOP         = True
     OUTPUT_IMAGE_QUALITY            = 75    # JPEG
     SIZE_THRESHOLD                  = 100   # bytes
+    USE_SOBEL                       = True
 
     # ECC Algorithm
     NUMBER_OF_ITERATIONS            = 1000
@@ -65,10 +66,24 @@ class Aligner(object):
             # proceed with downsized version
             self.reference_image = cv2.resize(self.reference_image, (0,0), fx=0.25, fy=0.25)
 
+        self.reference_image_gray = None
         self.reference_image_gray = cv2.cvtColor(self.reference_image,cv2.COLOR_BGR2GRAY)
+        
+        if self.USE_SOBEL:
+            self.reference_image_gray = self._get_gradient(self.reference_image_gray)
             
         # Define termination criteria
         self.CRITERIA = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, self.NUMBER_OF_ITERATIONS,  self.TERMINATION_EPS)
+
+
+    def _get_gradient(self, im):
+        # Calculate the x and y gradients using Sobel operator
+        grad_x = cv2.Sobel(im,cv2.CV_32F,1,0,ksize=3)
+        grad_y = cv2.Sobel(im,cv2.CV_32F,0,1,ksize=3)
+     
+        # Combine the two gradients
+        grad = cv2.addWeighted(np.absolute(grad_x), 0.5, np.absolute(grad_y), 0.5, 0)
+        return grad
 
 
     def calculate_translation_values(self, image, warp_matrix):
@@ -87,6 +102,8 @@ class Aligner(object):
             im2_downsized = im2
 
         im2_gray = cv2.cvtColor(im2_downsized, cv2.COLOR_BGR2GRAY)
+        if self.USE_SOBEL:
+            im2_gray = self._get_gradient(im2_gray)
 
         # run ECC
         try:
@@ -98,7 +115,7 @@ class Aligner(object):
         # Problem: right now rotation values from the warp_matrix are discarded, just
         # plain and stupid translation takes place
 
-        print warp_matrix
+        #print warp_matrix
 
         if self.DOWNSIZE:
             return (im2, warp_matrix, warp_matrix[0][2] * 4, warp_matrix[1][2] * 4)
