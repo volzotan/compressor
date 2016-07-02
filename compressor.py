@@ -45,13 +45,15 @@ def get_all_file_names(input_dir):
             if f == ".DS_Store":
                 continue
 
-            if not f.lower().endswith(EXTENSION):
+            if not f.lower().endswith(config.EXTENSION):
                 continue
 
-            if os.path.getsize(os.path.join(INPUT_DIR, f)) < 100:
+            if os.path.getsize(os.path.join(input_dir, f)) < 100:
                 continue
 
             file_list.append(f)
+
+    return file_list
 
 
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
@@ -71,11 +73,13 @@ for directory in config.DIRS_TO_CHECK:
     variable = getattr(config, directory)
     setattr(config, directory, path_check_and_expand(variable))
 
-for directory in config.DIRS_ABORT_IF_MISSING:
-    abort_if_missing(directory)
-
 for directory in config.DIRS_TO_CREATE:
-    create_if_not_existing(directory)
+    variable = getattr(config, directory)
+    create_if_not_existing(variable)
+
+for directory in config.DIRS_ABORT_IF_MISSING:
+    variable = getattr(config, directory)
+    abort_if_missing(variable)
 
 input_images_aligner = get_all_file_names(config.INPUT_DIR_ALIGNER)
 input_images_stacker = get_all_file_names(config.INPUT_DIR_STACKER)
@@ -83,15 +87,16 @@ input_images_stacker = get_all_file_names(config.INPUT_DIR_STACKER)
 # print len(input_images)
 
 # init aligner
-aligner.REFERENCE_IMAGE                 = "/Users/volzotan/Desktop/export/DSC03135.jpg"
+aligner.REFERENCE_IMAGE                 = "/Users/volzotan/Desktop/export_maschinenraum/DSC03135.jpg"
 aligner.INPUT_DIR                       = config.INPUT_DIR_ALIGNER
 aligner.OUTPUT_DIR                      = config.OUTPUT_DIR_ALIGNER
 aligner.EXTENSION                       = config.EXTENSION
 aligner.TRANSLATION_DATA                = config.TRANSLATION_DATA
-aligner.USE_CORRECTED_TRANSLATION_DATA  = True
+aligner.RESET_MATRIX_EVERY_LOOP         = False
+aligner.DOWNSIZE                        = False
 
-#aligner.init()
-#aligner.step2()
+aligner.init()
+aligner.step1(input_images_aligner)
 
 # init stacker
 stacker.INPUT_DIRECTORY     = config.INPUT_DIR_STACKER
@@ -100,5 +105,5 @@ stacker.RESULT_DIRECTORY    = config.OUTPUT_DIR_STACKER
 stacker.BASE_DIR            = BASE_DIR
 stacker.EXTENSION           = config.EXTENSION
 
-stacker.print_config()
-stacker.run(input_images)
+#stacker.print_config()
+#stacker.run(input_images)

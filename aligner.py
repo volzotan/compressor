@@ -25,7 +25,7 @@ class Aligner(object):
     TRANSLATION_DATA                = "translation_data.json"
     JSON_SAVE_INTERVAL              = 100
     SKIP_TRANSLATION                = -1     # do calculate translation data only from every n-th image
-    USE_CORRECTED_TRANSLATION_DATA  = False
+    USE_CORRECTED_TRANSLATION_DATA  = False  # use the second set of values hidden in the json file
 
     # Options
     DOWNSIZE                        = True
@@ -38,7 +38,7 @@ class Aligner(object):
     # ECC Algorithm
     NUMBER_OF_ITERATIONS            = 1000
     TERMINATION_EPS                 = 1e-10
-    WARP_MODE                       = cv2.MOTION_TRANSLATION
+    WARP_MODE                       = cv2.MOTION_TRANSLATION #cv2.MOTION_HOMOGRAPHY
 
     def __init__(self):
 
@@ -93,6 +93,12 @@ class Aligner(object):
             (cc, warp_matrix) = cv2.findTransformECC(self.reference_image_gray, im2_gray, warp_matrix, self.WARP_MODE, self.CRITERIA)
         except Exception as e:
             raise e
+
+        # TODO:
+        # Problem: right now rotation values from the warp_matrix are discarded, just
+        # plain and stupid translation takes place
+
+        print warp_matrix
 
         if self.DOWNSIZE:
             return (im2, warp_matrix, warp_matrix[0][2] * 4, warp_matrix[1][2] * 4)
