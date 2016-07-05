@@ -87,7 +87,7 @@ input_images_stacker = get_all_file_names(config.INPUT_DIR_STACKER)
 # print len(input_images)
 
 # init aligner
-aligner.REFERENCE_IMAGE                 = "/Users/volzotan/Desktop/export_maschinenraum/DSC03135.jpg"
+aligner.REFERENCE_IMAGE                 = "foo.jpg"
 aligner.INPUT_DIR                       = config.INPUT_DIR_ALIGNER
 aligner.OUTPUT_DIR                      = config.OUTPUT_DIR_ALIGNER
 aligner.EXTENSION                       = config.EXTENSION
@@ -95,9 +95,11 @@ aligner.TRANSLATION_DATA                = config.TRANSLATION_DATA
 aligner.RESET_MATRIX_EVERY_LOOP         = False
 aligner.DOWNSIZE                        = False
 
-aligner.init()
+#aligner.init()
 #aligner.step1(input_images_aligner)
 #aligner.step2()
+
+#aligner.compare_sharpness("foo.jpg", "bar.jpg")
 
 # init stacker
 stacker.INPUT_DIRECTORY     = config.INPUT_DIR_STACKER
@@ -107,4 +109,4 @@ stacker.BASE_DIR            = BASE_DIR
 stacker.EXTENSION           = config.EXTENSION
 
 #stacker.print_config()
-stacker.run(input_images_stacker)
+#stacker.run(input_images_stacker)
