@@ -102,11 +102,27 @@ aligner.DOWNSIZE                        = False
 #aligner.compare_sharpness("foo.jpg", "bar.jpg")
 
 # init stacker
-stacker.INPUT_DIRECTORY     = config.INPUT_DIR_STACKER
 stacker.NAMING_PREFIX       = config.NAMING_PREFIX
+stacker.INPUT_DIRECTORY     = config.INPUT_DIR_STACKER
 stacker.RESULT_DIRECTORY    = config.OUTPUT_DIR_STACKER
+stacker.FIXED_OUTPUT_NAME   = config.FIXED_OUTPUT_NAME
 stacker.BASE_DIR            = BASE_DIR
 stacker.EXTENSION           = config.EXTENSION
+stacker.PICKLE_NAME         = config.PICKLE_NAME
+
+stacker.DISPLAY_CURVE       = config.DISPLAY_CURVE
+stacker.APPLY_CURVE         = config.APPLY_CURVE
+
+stacker.DISPLAY_PEAKING     = config.DISPLAY_PEAKING
+stacker.APPLY_PEAKING       = config.APPLY_PEAKING
+stacker.PEAKING_THRESHOLD   = config.PEAKING_THRESHOLD
+stacker.PEAKING_MUL_FACTOR  = config.PEAKING_MUL_FACTOR
+
+stacker.WRITE_METADATA      = config.WRITE_METADATA
+stacker.SORT_IMAGES         = config.SORT_IMAGES
+
+stacker.SAVE_INTERVAL       = config.SAVE_INTERVAL
+stacker.PICKLE_INTERVAL     = config.PICKLE_INTERVAL
 
 #stacker.print_config()
 #stacker.run(input_images_stacker)
