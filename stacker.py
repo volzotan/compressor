@@ -56,9 +56,10 @@ import support
 
 class Stacker(object):
 
-    NAMING_PREFIX       = "humboldt"
+    NAMING_PREFIX       = ""
     INPUT_DIRECTORY     = "images"
     RESULT_DIRECTORY    = "stack_" + NAMING_PREFIX
+    FIXED_OUTPUT_NAME   = None
     DIMENSIONS          = None # (length, width)
     EXTENSION           = ".tif"
 
@@ -147,13 +148,18 @@ class Stacker(object):
         del pick
 
 
-    def save(self):
+    def save(self, fixed_name=None):
 
         divider = int(round(self.counter * self.BRIGHTNESS_INCREASE, 0)) if self.CHANGE_BRIGHTNESS else self.counter
 
-        filename = str(self.counter) + self.EXTENSION
-        if len(self.NAMING_PREFIX) > 0:
-            filename = self.NAMING_PREFIX + "_" + filename
+        filename = None
+
+        if fixed_name is None:
+            filename = str(self.counter) + self.EXTENSION
+            if len(self.NAMING_PREFIX) > 0:
+                filename = self.NAMING_PREFIX + "_" + filename
+        else:
+            filename = fixed_name
 
         filepath = os.path.join(self.RESULT_DIRECTORY, filename)
 
@@ -473,7 +479,7 @@ class Stacker(object):
             if self.SAVE_INTERVAL > 0 and self.counter % self.SAVE_INTERVAL == 0:
                 self.save()
 
-        filepath = self.save()
+        filepath = self.save(fixed_name=self.FIXED_OUTPUT_NAME)
         if self.WRITE_METADATA:
             self.write_metadata(filepath, self.metadata)
 
