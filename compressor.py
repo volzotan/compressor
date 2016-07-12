@@ -125,4 +125,4 @@ stacker.SAVE_INTERVAL       = config.SAVE_INTERVAL
 stacker.PICKLE_INTERVAL     = config.PICKLE_INTERVAL
 
 #stacker.print_config()
-#stacker.run(input_images_stacker)
+stacker.run(input_images_stacker)
