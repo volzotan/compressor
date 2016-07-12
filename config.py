@@ -19,7 +19,7 @@ APPLY_PEAKING       = False
 PEAKING_THRESHOLD   = 1
 PEAKING_MUL_FACTOR  = 1.0
 
-WRITE_METADATA      = True
+WRITE_METADATA      = False
 SORT_IMAGES         = False
 
 SAVE_INTERVAL       = -1
