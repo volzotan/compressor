@@ -469,7 +469,7 @@ class Stacker(object):
 
             if self.counter >= self.LIMIT:
                 if self.PICKLE_INTERVAL > 0:
-                    self.write_pickle(tresor, stacked_images)
+                    self.write_pickle(self.tresor, self.stacked_images)
                 break
 
             if self.PICKLE_INTERVAL > 0 and self.counter % self.PICKLE_INTERVAL == 0:
