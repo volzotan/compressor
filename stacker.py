@@ -67,9 +67,6 @@ class Stacker(object):
 
     PICKLE_NAME         = "stack.pickle"
 
-    CHANGE_BRIGHTNESS   = False # should brightness_increase be applied?
-    BRIGHTNESS_INCREASE = 0.80  # the less the brighter: divider * BRIGHTNESS_INCREASE
-
     DISPLAY_CURVE       = False
     APPLY_CURVE         = False
 
@@ -91,13 +88,13 @@ class Stacker(object):
     def __init__(self):
         #data               = json.load(open("export.json", "rb"))
 
-        self.counter             = 0
-        self.processed           = 0
+        self.counter                    = 0
+        self.processed                  = 0
 
-        self.input_images        = []
-        self.stacked_images      = []
+        self.input_images               = []
+        self.stacked_images             = []
 
-        self.curve_avg           = 0
+        self.weighted_average_divider   = 0
 
         self.stopwatch           = {
             "load_image": 0,
@@ -150,8 +147,6 @@ class Stacker(object):
 
     def save(self, fixed_name=None):
 
-        divider = int(round(self.counter * self.BRIGHTNESS_INCREASE, 0)) if self.CHANGE_BRIGHTNESS else self.counter
-
         filename = None
 
         if fixed_name is None:
@@ -164,9 +159,9 @@ class Stacker(object):
         filepath = os.path.join(self.RESULT_DIRECTORY, filename)
 
         if self.APPLY_CURVE:
-            t = self.tresor / (divider + (divider * self.curve_avg) )
+            t = self.tresor / (self.weighted_average_divider)
         else:
-            t = self.tresor / (divider)
+            t = self.tresor / (self.counter)
 
         # convert to uint16 for saving, 0.5s faster than usage of t.astype(np.uint16)
         s = np.asarray(t, np.uint16)
@@ -327,8 +322,20 @@ class Stacker(object):
             # range 0 to 1, because we have to invert the camera values to derive the brightness
             # value of the camera environment
 
-            #           image name   time         relative brightness value [0;1]                                   inverted absolute value
-            curve[i] = (curve[i][0], curve[i][1], np.interp(curve[i][2], [min_brightness, max_brightness], [1, 0]), np.interp(curve[i][2], [min_brightness, max_brightness], [max_brightness, min_brightness]))
+            image_name                          = curve[i][0]
+            time                                = curve[i][1]
+            relative_brightness_value           = np.interp(curve[i][2], [min_brightness, max_brightness], [1, 0]) # range [0;1]
+            inverted_absolute_value             = np.interp(curve[i][2], [min_brightness, max_brightness], [max_brightness, min_brightness])
+
+            # right now the inverted absolute brightness, which is used for the weighted curve calculation,
+            # is quite a large number. Usually around 20. (but every image is multiplied with it's respective value,
+            # resulting in enourmous numbers in the tresor matrix)
+            #
+            # better: value - min_brightness + 1 (result should never actually be zero)
+
+            inverted_absolute_value = inverted_absolute_value - min_brightness + 1
+
+            curve[i] = (image_name, time, relative_brightness_value, inverted_absolute_value)
 
         values = [x[2] for x in curve]
         self.curve_avg = sum(values) / float(len(values))
@@ -445,8 +452,10 @@ class Stacker(object):
             self.stopwatch["adding"] += self.stop_time()
 
             if self.APPLY_CURVE:
-                self.tresor = np.add(self.tresor, data * self.curve[self.counter-1][2])
-                print(self.curve[self.counter-1][2])
+                multiplier = self.curve[self.counter-1][3]
+                self.tresor = np.add(self.tresor, data * self.curve[self.counter-1][3])
+                self.weighted_average_divider += multiplier
+                print(multiplier)
                 self.stopwatch["curve"] += self.stop_time()
 
             if self.APPLY_PEAKING:
