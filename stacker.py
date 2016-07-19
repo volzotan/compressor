@@ -445,7 +445,8 @@ class Stacker(object):
             self.stopwatch["adding"] += self.stop_time()
 
             if self.APPLY_CURVE:
-                self.tresor = np.add(tresor, data * curve[counter][1])
+                self.tresor = np.add(self.tresor, data * self.curve[self.counter-1][2])
+                print(self.curve[self.counter-1][2])
                 self.stopwatch["curve"] += self.stop_time()
 
             if self.APPLY_PEAKING:
@@ -485,3 +486,13 @@ class Stacker(object):
 
         print("finished. time total: {}".format(datetime.datetime.now() - self.starttime))
         sys.exit(0)
+
+
+"""
+TODO:
+the way how I apply the brightness curve is still a bit strange.
+What I want: image brightness should have an influence about how an image is weighted in the adding/dividing process.
+status quo: every image counts for 1 and depending on it's brightness for up another 0-1. In the end: dividing by divider + curve_avg.
+
+matplotlib graphs are still missing...
+"""
