@@ -67,6 +67,9 @@ class Stacker(object):
 
     PICKLE_NAME         = "stack.pickle"
 
+    ALIGN                           = False
+    USE_CORRECTED_TRANSLATION_DATA  = False
+
     DISPLAY_CURVE       = False
     APPLY_CURVE         = False
 
@@ -85,8 +88,10 @@ class Stacker(object):
 
     # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
-    def __init__(self):
+    def __init__(self, aligner):
         #data               = json.load(open("export.json", "rb"))
+
+        self.aligner                    = aligner
 
         self.counter                    = 0
         self.processed                  = 0
@@ -98,6 +103,7 @@ class Stacker(object):
 
         self.stopwatch           = {
             "load_image": 0,
+            "transform_image": 0,
             "convert_to_array": 0,
             "curve": 0,
             "peaking": 0,
@@ -430,6 +436,9 @@ class Stacker(object):
         if self.DISPLAY_CURVE:
             self.display_curve(self.curve)
 
+        if self.ALIGN:
+            self.translation_data = json.load(open(self.aligner.TRANSLATION_DATA, "r"))
+
         # Peaking
         #peaking_display_mask = np.zeros((shape[0], shape[1]))
         #peaking_plot = plt.imshow(peaking_display_mask, cmap="Greys", vmin=0, vmax=1)
@@ -445,6 +454,17 @@ class Stacker(object):
             im = cv2.imread(os.path.join(self.INPUT_DIRECTORY, f), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
             self.stopwatch["load_image"] += self.stop_time()
 
+            if self.ALIGN:
+
+                if self.USE_CORRECTED_TRANSLATION_DATA:
+                    # translation_data[f] = ( (computed_x, computed_y), (corrected_x, corrected_y) ) 
+                    (x, y) = (self.translation_data[f][2][0], self.translation_data[f][2][1])
+                else:
+                    (x, y) = (self.translation_data[f][1][0], self.translation_data[f][1][1])
+
+                im = self.aligner.transform(im, x, y)
+                self.stopwatch["transform_image"] += self.stop_time()
+
             # data = np.array(im, np.int) # 100ms slower per image
             data = np.uint64(np.asarray(im, np.uint64))
             self.stopwatch["convert_to_array"] += self.stop_time()
@@ -459,8 +479,10 @@ class Stacker(object):
                 self.stopwatch["curve"] += self.stop_time()
 
             if self.APPLY_PEAKING:
+                # TODO: right now somethings wrong here. channels won't get boosted equally. (resulting in magenta or green tint)
+
                 # calculate boolean mask for every color channel
-                mask_rgb = data < 140 #PEAKING_THRESHOLD
+                mask_rgb = data < PEAKING_THRESHOLD
 
                 # combine mask via AND
                 mask_avg = np.logical_and(mask_rgb[:,:,0], mask_rgb[:,:,1], mask_rgb[:,:,2])

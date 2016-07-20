@@ -1,29 +1,37 @@
 # aligner
-INPUT_DIR_ALIGNER   = "export"
-TRANSLATION_DATA    = "translation_data.json"
-OUTPUT_DIR_ALIGNER  = "aligned"
+INPUT_DIR_ALIGNER       = "/Users/volzotan/Desktop/export_tiff"
+TRANSLATION_DATA        = "translation_data.json"
+OUTPUT_DIR_ALIGNER      = "aligned"
+
+REFERENCE_IMAGE         = "/Users/volzotan/Desktop/export_tiff/DSC03660.tif"
+
+RESET_MATRIX_EVERY_LOOP = False
+DOWNSIZE                = True
+
+JSON_SAVE_INTERVAL      = 10
 
 # stacker
-NAMING_PREFIX       = ""
-INPUT_DIR_STACKER   = OUTPUT_DIR_ALIGNER
-OUTPUT_DIR_STACKER  = "stack"
-FIXED_OUTPUT_NAME   = "summaery.jpg"
-EXTENSION           = ".jpg"
-PICKLE_NAME         = "stack.pickle"
+NAMING_PREFIX           = ""
+INPUT_DIR_STACKER       = INPUT_DIR_ALIGNER
+OUTPUT_DIR_STACKER      = "stack_bauhaus"
+FIXED_OUTPUT_NAME       = "bauhaus.tif"
+EXTENSION               = ".tif"
+PICKLE_NAME             = "stack.pickle"
 
-DISPLAY_CURVE       = False
-APPLY_CURVE         = False
+ALIGN                   = True
+DISPLAY_CURVE           = False
+APPLY_CURVE             = False
 
-DISPLAY_PEAKING     = False
-APPLY_PEAKING       = False
-PEAKING_THRESHOLD   = 1
-PEAKING_MUL_FACTOR  = 1.0
+DISPLAY_PEAKING         = False
+APPLY_PEAKING           = False
+PEAKING_THRESHOLD       = 3000
+PEAKING_MUL_FACTOR      = 1.0
 
-WRITE_METADATA      = True
-SORT_IMAGES         = False
+WRITE_METADATA          = True
+SORT_IMAGES             = False
 
-SAVE_INTERVAL       = -1
-PICKLE_INTERVAL     = 5
+SAVE_INTERVAL           = 30
+PICKLE_INTERVAL         = -1
 
 # meta
 DIRS_TO_CHECK           = ["INPUT_DIR_ALIGNER", "INPUT_DIR_STACKER"]

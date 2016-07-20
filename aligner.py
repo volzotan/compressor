@@ -16,7 +16,7 @@ OUTPUT_STR += "time_align {7:>.1f}"
 class Aligner(object):
 
     # Paths
-    REFERENCE_IMAGE                 = "images/DSCF7634.tif"
+    REFERENCE_IMAGE                 = None
     EXTENSION                       = ".tif"
 
     INPUT_DIR                       = "images"
@@ -26,6 +26,8 @@ class Aligner(object):
     JSON_SAVE_INTERVAL              = 100
     SKIP_TRANSLATION                = -1     # do calculate translation data only from every n-th image
     USE_CORRECTED_TRANSLATION_DATA  = False  # use the second set of values hidden in the json file
+
+    LIMIT                           = -1
 
     # Options
     DOWNSIZE                        = True
@@ -123,25 +125,6 @@ class Aligner(object):
             return (im2, warp_matrix, warp_matrix[0][2], warp_matrix[1][2])
 
 
-    def transform_and_write(self, image_object, image_name, x, y):
-
-        destination_file    = os.path.join(self.OUTPUT_DIR, image_name)
-        warp_matrix         = self._create_warp_matrix()
-
-        warp_matrix[0][2] = x
-        warp_matrix[1][2] = y
-
-        if self.WARP_MODE == cv2.MOTION_HOMOGRAPHY :
-            # Use warpPerspective for Homography 
-            im2_aligned = cv2.warpPerspective (image_object, warp_matrix, (self.sz[1],self.sz[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
-        else :
-            # Use warpAffine for Translation, Euclidean and Affine
-            im2_aligned = cv2.warpAffine(image_object, warp_matrix, (self.sz[1],self.sz[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
-        
-        # Write final results
-        cv2.imwrite(destination_file, im2_aligned, [int(cv2.IMWRITE_JPEG_QUALITY), self.OUTPUT_IMAGE_QUALITY])
-
-
     def step1(self, images):
 
         self._load_data()
@@ -152,6 +135,10 @@ class Aligner(object):
 
         for image in images:
             self.counter += 1
+
+            if self.LIMIT > 0 and self.counter > self.LIMIT:
+                print("limit reached. abort.")
+                break
 
             if image in self.translation_data:
                 self.already_existing += 1
@@ -183,6 +170,7 @@ class Aligner(object):
                 # reuse warp matrix for next computation to speed up algorithm
                 warp_matrix = new_warp_matrix
             else:
+                new_warp_matrix = self._create_warp_matrix()
                 translation_x = 0
                 translation_y = 0
 
@@ -190,8 +178,8 @@ class Aligner(object):
             self.success += 1
 
             # numpy float32 to python float
-            #                               calculated translation in both axes           corrected values
-            self.translation_data[image] = ((float(translation_x), float(translation_y)), (0.0, 0.0))
+            #                                                         calculated translation in both axes           corrected values
+            self.translation_data[image] = (new_warp_matrix.tolist(), (float(translation_x), float(translation_y)), (0.0, 0.0))
 
             if not skip:
                 print(OUTPUT_STR.format(image, self.counter, len(images), self.skipped, self.success, self.failed, self.outlier, timediff.total_seconds()))
@@ -234,7 +222,12 @@ class Aligner(object):
             timer_start = datetime.datetime.now()
 
             im2 = self._read_image_and_crop(source_file)
-            self.transform_and_write(im2, image, x, y)
+
+            im2_aligned = self.transform(im2, x, y)
+
+            # Write final results
+            destination_file    = os.path.join(self.OUTPUT_DIR, image_name)
+            cv2.imwrite(destination_file, im2_aligned, [int(cv2.IMWRITE_JPEG_QUALITY), self.OUTPUT_IMAGE_QUALITY])
 
             timediff_align = datetime.datetime.now() - timer_start
 
@@ -243,6 +236,22 @@ class Aligner(object):
                 self._transfer_metadata(source_file, destination_file)
 
             print(OUTPUT_STR.format(image, self.counter, len(images), self.skipped, self.success, self.failed, self.outlier, timediff_align.total_seconds()))
+
+
+    def transform(self, image_object, x, y, write=True):
+        warp_matrix         = self._create_warp_matrix()
+
+        warp_matrix[0][2] = x
+        warp_matrix[1][2] = y
+
+        if self.WARP_MODE == cv2.MOTION_HOMOGRAPHY :
+            # Use warpPerspective for Homography 
+            im2_aligned = cv2.warpPerspective (image_object, warp_matrix, (self.sz[1],self.sz[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
+        else :
+            # Use warpAffine for Translation, Euclidean and Affine
+            im2_aligned = cv2.warpAffine(image_object, warp_matrix, (self.sz[1],self.sz[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
+        
+        return im2_aligned
 
 
     def _transfer_metadata(self, source, destination):
