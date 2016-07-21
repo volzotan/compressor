@@ -125,6 +125,7 @@ class Stacker(object):
         ("extension: {}", self.EXTENSION),
         (" ", " "),
         ("modifications:", ""),
+        ("   align:   {}", str(self.ALIGN)),
         ("   curve:   {}", str(self.APPLY_CURVE)),
         ("   peaking: {}", str(self.APPLY_PEAKING)),
         (" ", " "),
@@ -339,7 +340,7 @@ class Stacker(object):
             #
             # better: value - min_brightness + 1 (result should never actually be zero)
 
-            inverted_absolute_value = inverted_absolute_value - min_brightness + 1
+            # inverted_absolute_value = inverted_absolute_value - min_brightness + 1
 
             curve[i] = (image_name, time, relative_brightness_value, inverted_absolute_value)
 
@@ -468,15 +469,16 @@ class Stacker(object):
             # data = np.array(im, np.int) # 100ms slower per image
             data = np.uint64(np.asarray(im, np.uint64))
             self.stopwatch["convert_to_array"] += self.stop_time()
-            self.tresor = np.add(self.tresor, data)
-            self.stopwatch["adding"] += self.stop_time()
+
+            if not self.APPLY_CURVE:
+                self.tresor = np.add(self.tresor, data)
 
             if self.APPLY_CURVE:
                 multiplier = self.curve[self.counter-1][3]
-                self.tresor = np.add(self.tresor, data * self.curve[self.counter-1][3])
+                self.tresor = np.add(self.tresor, data * multiplier)
                 self.weighted_average_divider += multiplier
-                print(multiplier)
-                self.stopwatch["curve"] += self.stop_time()
+
+            self.stopwatch["adding"] += self.stop_time()
 
             if self.APPLY_PEAKING:
                 # TODO: right now somethings wrong here. channels won't get boosted equally. (resulting in magenta or green tint)

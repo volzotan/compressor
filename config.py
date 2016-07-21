@@ -7,6 +7,7 @@ REFERENCE_IMAGE         = "/Users/volzotan/Desktop/export_tiff/DSC03660.tif"
 
 RESET_MATRIX_EVERY_LOOP = False
 DOWNSIZE                = True
+SKIP_TRANSLATION        = 10
 
 JSON_SAVE_INTERVAL      = 10
 
@@ -34,6 +35,11 @@ SAVE_INTERVAL           = 30
 PICKLE_INTERVAL         = -1
 
 # meta
-DIRS_TO_CHECK           = ["INPUT_DIR_ALIGNER", "INPUT_DIR_STACKER"]
+DIRS_TO_EXPAND          = [ "INPUT_DIR_ALIGNER", 
+                            "OUTPUT_DIR_ALIGNER", 
+                            "TRANSLATION_DATA",
+                            "INPUT_DIR_STACKER", 
+                            "OUTPUT_DIR_STACKER",
+                            ]
 DIRS_ABORT_IF_MISSING   = ["INPUT_DIR_ALIGNER", "INPUT_DIR_STACKER"]
 DIRS_TO_CREATE          = ["OUTPUT_DIR_ALIGNER", "OUTPUT_DIR_STACKER"]

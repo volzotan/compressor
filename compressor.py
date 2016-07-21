@@ -69,7 +69,7 @@ BASE_DIR = os.path.dirname(os.path.realpath(__file__))
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
 # expand all paths
-for directory in config.DIRS_TO_CHECK:
+for directory in config.DIRS_TO_EXPAND:
     variable = getattr(config, directory)
     setattr(config, directory, path_check_and_expand(variable))
 
@@ -95,8 +95,9 @@ aligner.TRANSLATION_DATA                = config.TRANSLATION_DATA
 aligner.RESET_MATRIX_EVERY_LOOP         = config.RESET_MATRIX_EVERY_LOOP
 aligner.DOWNSIZE                        = config.DOWNSIZE
 aligner.JSON_SAVE_INTERVAL              = config.JSON_SAVE_INTERVAL
+aligner.SKIP_TRANSLATION                = config.SKIP_TRANSLATION
 
-aligner.init()
+# aligner.init()
 #aligner.step1(input_images_aligner)
 #aligner.step2()
 
@@ -124,5 +125,5 @@ stacker.SORT_IMAGES         = config.SORT_IMAGES
 stacker.SAVE_INTERVAL       = config.SAVE_INTERVAL
 stacker.PICKLE_INTERVAL     = config.PICKLE_INTERVAL
 
-#stacker.print_config()
+stacker.print_config()
 stacker.run(input_images_stacker)

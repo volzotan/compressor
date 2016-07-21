@@ -35,7 +35,6 @@ class Aligner(object):
     TRANSFER_METADATA               = True
     RESET_MATRIX_EVERY_LOOP         = True
     OUTPUT_IMAGE_QUALITY            = 75    # JPEG
-    SIZE_THRESHOLD                  = 100   # bytes
     USE_SOBEL                       = True
 
     # ECC Algorithm
@@ -117,7 +116,7 @@ class Aligner(object):
         # Problem: right now rotation values from the warp_matrix are discarded, just
         # plain and stupid translation takes place
 
-        #print warp_matrix
+        print warp_matrix
 
         if self.DOWNSIZE:
             return (im2, warp_matrix, warp_matrix[0][2] * 4, warp_matrix[1][2] * 4)
@@ -338,38 +337,4 @@ class Aligner(object):
 
         print("img: {} means: {}".format(path1, cv2.mean(im1)))
         print("img: {} means: {}".format(path2, cv2.mean(im2)))
-
-
-if __name__ == "__main__":
-
-    if (sys.argv) <= 1:
-        sys.exit(0)
-
-    if sys.argv[1] == "step1":
-        ls = []
-
-        # acquire all filenames
-        for root, dirs, files in os.walk(Aligner.INPUT_DIR):
-            for f in files:
-
-                if f == ".DS_Store":
-                    continue
-
-                if not f.lower().endswith(Aligner.EXTENSION.lower()):
-                    continue
-
-                # if f in problem_list:
-                #     continue
-
-                ls.append(f)
-
-        aligner = Aligner()
-        aligner.init()
-        aligner.step1(ls)
-    elif sys.argv[1] == "step2":
-        aligner = Aligner()
-        aligner.init()
-        aligner.step2()
-    else:
-        print("illegal argument. exit.")
         
