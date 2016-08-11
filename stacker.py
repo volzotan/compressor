@@ -431,8 +431,9 @@ class Stacker(object):
         self.stop_time("initialization: {}{}")
 
         # Curve
-        self.curve = self.calculate_brightness_curve(self.input_images)
-        self.stop_time("compute brightness curve: {}{}")
+        if self.DISPLAY_CURVE or self.APPLY_CURVE:
+            self.curve = self.calculate_brightness_curve(self.input_images)
+            self.stop_time("compute brightness curve: {}{}")
 
         if self.DISPLAY_CURVE:
             self.display_curve(self.curve)
