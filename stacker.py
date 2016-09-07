@@ -8,6 +8,7 @@ import pickle
 import datetime
 import subprocess
 import numpy as np
+from scipy.ndimage.filters import gaussian_filter
 
 import matplotlib.pyplot as plt
 
@@ -16,6 +17,8 @@ from fractions import Fraction
 import math
 
 import support
+
+# from __future__ import print_function
 
 
 """
@@ -54,6 +57,15 @@ import support
 
 """
 
+class Stopwatch(object):
+
+    def __init__(self):
+        pass
+
+    def stop(self, tag):
+        pass
+
+
 class Stacker(object):
 
     NAMING_PREFIX       = ""
@@ -73,8 +85,7 @@ class Stacker(object):
     DISPLAY_CURVE       = False
     APPLY_CURVE         = False
 
-    DISPLAY_PEAKING     = False
-    APPLY_PEAKING       = False
+    APPLY_PEAKING       = True
     PEAKING_THRESHOLD   = 200 # TODO: don't use fixed values
     PEAKING_MUL_FACTOR  = 1.0
 
@@ -85,6 +96,10 @@ class Stacker(object):
     PICKLE_INTERVAL     = -1
 
     DEBUG               = False
+
+    # debug options
+
+    DISPLAY_PEAKING     = False
 
     # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
@@ -112,6 +127,7 @@ class Stacker(object):
         }
 
         self.tresor = None
+        self.peaking_tresor = None
 
     # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
@@ -165,10 +181,19 @@ class Stacker(object):
 
         filepath = os.path.join(self.RESULT_DIRECTORY, filename)
 
+        t = self.tresor.copy()
+
+        if self.APPLY_PEAKING:
+            # blur the result to avoid sharp edges
+            blurred_peaking_tresor = gaussian_filter(self.peaking_tresor, sigma=5)
+            blurred_peaking_tresor = np.asarray(blurred_peaking_tresor * self.PEAKING_MUL_FACTOR, np.uint64)
+
+            t = np.add(t, blurred_peaking_tresor)
+
         if self.APPLY_CURVE:
-            t = self.tresor / (self.weighted_average_divider)
+            t = t / (self.weighted_average_divider)
         else:
-            t = self.tresor / (self.counter)
+            t = t / (self.counter)
 
         # convert to uint16 for saving, 0.5s faster than usage of t.astype(np.uint16)
         s = np.asarray(t, np.uint16)
@@ -189,7 +214,7 @@ class Stacker(object):
 
         save_time = self.stopwatch["write_image"]/(self.counter/self.SAVE_INTERVAL)
 
-        print("saved. counter: {0:.0f} time total: {1:.2f} saving image: {2:.2f} time per image: {3:.2f} est. remaining: {4:.2f}".format(self.counter, (datetime.datetime.now()-self.starttime).total_seconds(), save_time, timeperimage, est_remaining))
+        print("saved. counter: {0:3d} time total: {1:3d} saving image: {2:3d} time per image: {3:3d} est. remaining: {4:5d} || {5}".format(self.counter, int((datetime.datetime.now()-self.starttime).total_seconds()), int(save_time), int(timeperimage), int(est_remaining), support.Converter().humanReadableSeconds(est_remaining)))
         #print self.stopwatch
         return filepath
 
@@ -358,6 +383,40 @@ class Stacker(object):
         plt.show()
 
 
+    def apply_peaking(self, data):
+
+        datacopy = data.copy()
+
+        # calculate boolean mask for every color channel
+        mask_rgb = data > self.PEAKING_THRESHOLD
+
+        # combine mask via AND
+        # all three channels must be > PEAKING_THRESHOLD
+        mask_all_channels = np.logical_and(mask_rgb[:,:,0], mask_rgb[:,:,1], mask_rgb[:,:,2])
+
+        # invert mask and set everything to 0 if not all three channels are > threshold
+        datacopy[~mask_all_channels] = 0
+
+        # TODO: improvement:
+        # right now the whole image (data) gets copied, certain parts are nulled and everything will
+        # be added to peaking_tresor. Better: just add the non masked parts from the original data ndarray.
+
+        if self.DISPLAY_PEAKING:
+           
+            plt.imshow(~mask_all_channels, cmap="Greys", vmin=0, vmax=1)
+
+            s = np.asarray(datacopy, np.uint16)
+            cv2.imwrite(os.path.join(self.RESULT_DIRECTORY, "plot.jpg"), s)
+
+            #plt.imshow(cv2.cvtColor(s, cv2.COLOR_BGR2RGB))
+
+            # plt.show()
+            sys.exit(0)
+
+        self.peaking_tresor = np.add(self.peaking_tresor, datacopy)
+        self.stopwatch["peaking"] += self.stop_time()
+
+
     def stop_time(self, msg=None):
         seconds = (datetime.datetime.now() - self.timer).total_seconds()
         if msg is not None:
@@ -428,6 +487,8 @@ class Stacker(object):
             self.DIMENSIONS = (shape[1], shape[0])
 
         self.tresor = np.zeros((self.DIMENSIONS[1], self.DIMENSIONS[0], 3), dtype=np.uint64)
+        if self.APPLY_PEAKING:
+            self.peaking_tresor = np.zeros((self.DIMENSIONS[1], self.DIMENSIONS[0], 3), dtype=np.uint64)
         self.stop_time("initialization: {}{}")
 
         # Curve
@@ -440,10 +501,6 @@ class Stacker(object):
 
         if self.ALIGN:
             self.translation_data = json.load(open(self.aligner.TRANSLATION_DATA, "r"))
-
-        # Peaking
-        #peaking_display_mask = np.zeros((shape[0], shape[1]))
-        #peaking_plot = plt.imshow(peaking_display_mask, cmap="Greys", vmin=0, vmax=1)
 
         for f in self.input_images:
 
@@ -482,23 +539,7 @@ class Stacker(object):
             self.stopwatch["adding"] += self.stop_time()
 
             if self.APPLY_PEAKING:
-                # TODO: right now somethings wrong here. channels won't get boosted equally. (resulting in magenta or green tint)
-
-                # calculate boolean mask for every color channel
-                mask_rgb = data < PEAKING_THRESHOLD
-
-                # combine mask via AND
-                mask_avg = np.logical_and(mask_rgb[:,:,0], mask_rgb[:,:,1], mask_rgb[:,:,2])
-
-                data[mask_avg] = 0
-
-                if self.DISPLAY_PEAKING:
-                    peaking_display_mask = np.logical_or(peaking_display_mask, mask_avg)
-                    peaking_plot.set_data(peaking_display_mask)
-                    # TODO: redraw
-
-                self.tresor = np.add(self.tresor, data * PEAKING_MUL_FACTOR)
-                self.stopwatch["peaking"] += self.stop_time()
+                self.apply_peaking(data)
 
             self.stacked_images.append(f)
 
@@ -513,6 +554,9 @@ class Stacker(object):
 
             if self.SAVE_INTERVAL > 0 and self.counter % self.SAVE_INTERVAL == 0:
                 self.save()
+
+            # print("counter: {0:.0f}/{1:.0f}".format(self.counter, len(self.input_images)))
+        
 
         filepath = self.save(fixed_name=self.FIXED_OUTPUT_NAME)
         if self.WRITE_METADATA:
