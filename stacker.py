@@ -189,6 +189,9 @@ class Stacker(object):
             blurred_peaking_tresor = np.asarray(blurred_peaking_tresor * self.PEAKING_MUL_FACTOR, np.uint64)
 
             t = np.add(t, blurred_peaking_tresor)
+        overflow_perc = np.amax(t) / (np.iinfo(np.uint64).max / 100.0)
+        if overflow_perc > 70:
+            print("tresor overflow status: {}%".format(round(overflow_perc, 2)))
 
         if self.APPLY_CURVE:
             t = t / (self.weighted_average_divider)
