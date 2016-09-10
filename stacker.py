@@ -18,8 +18,6 @@ import math
 
 import support
 
-# from __future__ import print_function
-
 
 """
     Stacker loads every image in INPUT_DIRECTORY,
@@ -79,15 +77,20 @@ class Stacker(object):
 
     PICKLE_NAME         = "stack.pickle"
 
+    # Align
     ALIGN                           = False
     USE_CORRECTED_TRANSLATION_DATA  = False
 
-    DISPLAY_CURVE       = False
-    APPLY_CURVE         = False
+    # Curve
+    DISPLAY_CURVE                   = False
+    APPLY_CURVE                     = False
 
-    APPLY_PEAKING       = True
-    PEAKING_THRESHOLD   = 200 # TODO: don't use fixed values
-    PEAKING_MUL_FACTOR  = 1.0
+    # Peaking
+    APPLY_PEAKING                   = True
+    PEAKING_THRESHOLD               = 200 # TODO: don't use fixed values
+    PEAKING_MUL_FACTOR              = 1.0
+    PEAKING_BLUR                    = True
+    PEAKING_GAUSSIAN_FILTER_SIZE    = 1
 
     WRITE_METADATA      = True
     SORT_IMAGES         = True
@@ -95,11 +98,12 @@ class Stacker(object):
     SAVE_INTERVAL       = 15
     PICKLE_INTERVAL     = -1
 
-    DEBUG               = False
+    DEBUG               = True
 
     # debug options
 
     DISPLAY_PEAKING     = False
+    CLIPPING_VALUE      = 254
 
     # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
@@ -183,12 +187,6 @@ class Stacker(object):
 
         t = self.tresor.copy()
 
-        if self.APPLY_PEAKING:
-            # blur the result to avoid sharp edges
-            blurred_peaking_tresor = gaussian_filter(self.peaking_tresor, sigma=5)
-            blurred_peaking_tresor = np.asarray(blurred_peaking_tresor * self.PEAKING_MUL_FACTOR, np.uint64)
-
-            t = np.add(t, blurred_peaking_tresor)
         overflow_perc = np.amax(t) / (np.iinfo(np.uint64).max / 100.0)
         if overflow_perc > 70:
             print("tresor overflow status: {}%".format(round(overflow_perc, 2)))
@@ -197,6 +195,45 @@ class Stacker(object):
             t = t / (self.weighted_average_divider)
         else:
             t = t / (self.counter)
+
+
+
+        if self.APPLY_PEAKING:
+
+            """
+            different methods of peaking:
+            * sum up all the peaking values, apply the multiplication factor and add to tresor before the dividing happens
+            * sum up all the peaking values, clip the limits at the max allowed value
+
+            PEAKING_MUL_FACTOR doesn't need to be a fixed value, it may be also something like counter/2
+
+            """
+
+            if self.DEBUG:
+                print("saving: max value before peaking in image: {}".format(np.amax(t)))
+
+            # clip to max value
+            peaked = np.clip(self.peaking_tresor, 0, self.CLIPPING_VALUE)
+
+            # blur the result to avoid sharp edges
+            if self.PEAKING_BLUR:
+                peaked = gaussian_filter(peaked, sigma=self.PEAKING_GAUSSIAN_FILTER_SIZE)
+
+            peaked = np.asarray(peaked * self.PEAKING_MUL_FACTOR, np.uint64)
+
+            t = np.add(t, peaked)
+
+            s = np.asarray(peaked, np.uint16)
+            cv2.imwrite(filepath + ".peaking.jpg", s)
+
+        if self.DEBUG:
+            print("saving: max value in image: {}".format(np.amax(t)))
+
+        # TODO: check for any overflows of single pixels
+        # e.g.: through peaking for example some pixels may be brighter than allows.
+        #       those need to be capped
+
+        t = np.clip(t, 0, self.CLIPPING_VALUE)
 
         # convert to uint16 for saving, 0.5s faster than usage of t.astype(np.uint16)
         s = np.asarray(t, np.uint16)
@@ -406,12 +443,13 @@ class Stacker(object):
 
         if self.DISPLAY_PEAKING:
            
-            plt.imshow(~mask_all_channels, cmap="Greys", vmin=0, vmax=1)
+            #plt.imshow(~mask_all_channels, cmap="Greys", vmin=0, vmax=1)
 
             s = np.asarray(datacopy, np.uint16)
             cv2.imwrite(os.path.join(self.RESULT_DIRECTORY, "plot.jpg"), s)
 
             #plt.imshow(cv2.cvtColor(s, cv2.COLOR_BGR2RGB))
+            self._plot(datacopy)
 
             # plt.show()
             sys.exit(0)
@@ -512,7 +550,7 @@ class Stacker(object):
             if f in self.stacked_images:
                 continue
 
-            # 3: read input as 16bit color TIFF
+            # read input as 16bit color TIFF
             im = cv2.imread(os.path.join(self.INPUT_DIRECTORY, f), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
             self.stopwatch["load_image"] += self.stop_time()
 
@@ -567,13 +605,3 @@ class Stacker(object):
 
         print("finished. time total: {}".format(datetime.datetime.now() - self.starttime))
         sys.exit(0)
-
-
-"""
-TODO:
-the way how I apply the brightness curve is still a bit strange.
-What I want: image brightness should have an influence about how an image is weighted in the adding/dividing process.
-status quo: every image counts for 1 and depending on it's brightness for up another 0-1. In the end: dividing by divider + curve_avg.
-
-matplotlib graphs are still missing...
-"""

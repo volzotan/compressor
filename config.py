@@ -1,5 +1,5 @@
 # aligner
-INPUT_DIR_ALIGNER       = "/Users/volzotan/Desktop/export_tiff"
+INPUT_DIR_ALIGNER       = "/Users/volzotan/GIT/compressor/images_jpegs"
 TRANSLATION_DATA        = "translation_data.json"
 OUTPUT_DIR_ALIGNER      = "aligned"
 
@@ -13,26 +13,30 @@ JSON_SAVE_INTERVAL      = 10
 
 # stacker
 NAMING_PREFIX           = ""
-INPUT_DIR_STACKER       = INPUT_DIR_ALIGNER
-OUTPUT_DIR_STACKER      = "stack_bauhaus"
-FIXED_OUTPUT_NAME       = "bauhaus.tif"
-EXTENSION               = ".tif"
+INPUT_DIR_STACKER       = "~/Desktop/peakingtest"
+OUTPUT_DIR_STACKER      = "/Users/volzotan/GIT/compressor/output"
+FIXED_OUTPUT_NAME       = "frontlaan_peaking_value0.4.jpg"
+EXTENSION               = ".jpg"
 PICKLE_NAME             = "stack.pickle"
 
-ALIGN                   = True
+ALIGN                   = False
+
 DISPLAY_CURVE           = False
 APPLY_CURVE             = False
 
-DISPLAY_PEAKING         = False
-APPLY_PEAKING           = False
-PEAKING_THRESHOLD       = 3000
-PEAKING_MUL_FACTOR      = 1.0
+APPLY_PEAKING           = True
+PEAKING_THRESHOLD       = 250
+PEAKING_MUL_FACTOR      = 0.4
 
-WRITE_METADATA          = True
+WRITE_METADATA          = True            
 SORT_IMAGES             = False
 
-SAVE_INTERVAL           = 30
+SAVE_INTERVAL           = 5
 PICKLE_INTERVAL         = -1
+
+# debug
+
+DISPLAY_PEAKING         = False
 
 # meta
 DIRS_TO_EXPAND          = [ "INPUT_DIR_ALIGNER", 
