@@ -1,0 +1,14 @@
+# Requirements:
+
+## EXIF related:
+
+brew install pygobject3 --with-python3
+
+### ubuntu:
+sudo apt-get install python3-gi
+
+
+sudo pip3 install pillow
+sudo pip3 install scipy
+sudo pip3 install matplotlib
+sudo pip3 install yaml
