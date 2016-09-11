@@ -28,13 +28,13 @@ class Converter(object):
         output = "{0:2d}s".format(seconds)
 
         if days >= 1 or hours >= 1 or minutes >= 1:
-            output = "{0:2d}min ".format(minutes) + output
+            output = "{0:2d}min ".format(int(minutes)) + output
 
         if days >= 1 or hours >= 1:
-            output = "{0:2d}h ".format(hours) + output
+            output = "{0:2d}h ".format(int(hours)) + output
 
         if days >= 1:
-            output = "{0:2d}d ".format(days) + output
+            output = "{0:2d}d ".format(int(days)) + output
 
         return output
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 from aligner import Aligner
 from stacker import Stacker
@@ -84,8 +84,6 @@ for directory in config.DIRS_ABORT_IF_MISSING:
 input_images_aligner = get_all_file_names(config.INPUT_DIR_ALIGNER)
 input_images_stacker = get_all_file_names(config.INPUT_DIR_STACKER)
 
-# print len(input_images)
-
 # init aligner
 aligner.REFERENCE_IMAGE                 = config.REFERENCE_IMAGE
 aligner.INPUT_DIR                       = config.INPUT_DIR_ALIGNER
@@ -97,8 +95,9 @@ aligner.DOWNSIZE                        = config.DOWNSIZE
 aligner.JSON_SAVE_INTERVAL              = config.JSON_SAVE_INTERVAL
 aligner.SKIP_TRANSLATION                = config.SKIP_TRANSLATION
 
-# aligner.init()
+#aligner.init()
 #aligner.step1(input_images_aligner)
+#aligner.init()
 #aligner.step2()
 
 # init stacker
@@ -125,5 +124,5 @@ stacker.SORT_IMAGES         = config.SORT_IMAGES
 stacker.SAVE_INTERVAL       = config.SAVE_INTERVAL
 stacker.PICKLE_INTERVAL     = config.PICKLE_INTERVAL
 
-stacker.print_config()
-stacker.run(input_images_stacker)
+#stacker.print_config()
+#stacker.run(input_images_stacker)

@@ -3,8 +3,12 @@ import numpy as np
 import os, sys
 import datetime
 import json
-import pyexiv2
 import traceback
+import subprocess
+
+import gi
+gi.require_version('GExiv2', '0.10')
+from gi.repository import GExiv2
 
 OUTPUT_STR  = "{0} {1:>5d}  / {2:>5d} | "
 OUTPUT_STR += "skipped {3:>4d} | "
@@ -53,6 +57,9 @@ class Aligner(object):
         
 
     def init(self):
+
+        self.__init__()
+
         # Read the reference image (as 8bit for the ECC algorithm)
         self.reference_image = cv2.imread(self.REFERENCE_IMAGE)
 
@@ -116,7 +123,7 @@ class Aligner(object):
         # Problem: right now rotation values from the warp_matrix are discarded, just
         # plain and stupid translation takes place
 
-        print warp_matrix
+        print(warp_matrix)
 
         if self.DOWNSIZE:
             return (im2, warp_matrix, warp_matrix[0][2] * 4, warp_matrix[1][2] * 4)
@@ -142,11 +149,6 @@ class Aligner(object):
             if image in self.translation_data:
                 self.already_existing += 1
                 print("{} already calculated".format(image))
-                continue
-
-            if os.path.getsize(os.path.join(self.INPUT_DIR, image)) < self.SIZE_THRESHOLD:
-                self.skipped += 1
-                print("{} empty image".format(image))
                 continue
 
             if self.SKIP_TRANSLATION > 0 and self.success % self.SKIP_TRANSLATION != 0:
@@ -213,10 +215,10 @@ class Aligner(object):
                 print("{} translation data missing".format(image))
 
             if self.USE_CORRECTED_TRANSLATION_DATA:
-                # translation_data[image] = ( (computed_x, computed_y), (corrected_x, corrected_y) ) 
-                (x, y) = (self.translation_data[image][1][0], self.translation_data[image][1][1])
+                # translation_data[image] = ( (original warp matrix), (computed_x, computed_y), (corrected_x, corrected_y) ) 
+                (x, y) = (self.translation_data[image][2][0], self.translation_data[image][2][1])
             else:
-                (x, y) = (self.translation_data[image][0][0], self.translation_data[image][0][1])
+                (x, y) = (self.translation_data[image][1][0], self.translation_data[image][1][1])
 
             timer_start = datetime.datetime.now()
 
@@ -225,7 +227,6 @@ class Aligner(object):
             im2_aligned = self.transform(im2, x, y)
 
             # Write final results
-            destination_file    = os.path.join(self.OUTPUT_DIR, image_name)
             cv2.imwrite(destination_file, im2_aligned, [int(cv2.IMWRITE_JPEG_QUALITY), self.OUTPUT_IMAGE_QUALITY])
 
             timediff_align = datetime.datetime.now() - timer_start
@@ -239,6 +240,8 @@ class Aligner(object):
 
     def transform(self, image_object, x, y, write=True):
         warp_matrix         = self._create_warp_matrix()
+
+        print(x)
 
         warp_matrix[0][2] = x
         warp_matrix[1][2] = y
@@ -254,32 +257,26 @@ class Aligner(object):
 
 
     def _transfer_metadata(self, source, destination):
-        metadata_source = pyexiv2.ImageMetadata(source)
-        metadata_source.read()
-        metadata_destination = pyexiv2.ImageMetadata(destination)
-        metadata_destination.read()
+        # TODO: interim solution till I find something useful in GExiv2 to copy metadata
 
-        #key_types = [metadata_source.exif_keys()]
+        return_value = subprocess.call(["exiftool", "-TagsFromFile", source, destination])
+        subprocess.call(["exiftool", "-delete_original!", destination])
 
-        for key in metadata_source.exif_keys:
-            try:
-                metadata_destination[key] = pyexiv2.ExifTag(key, metadata_source[key].value)
-            except Exception as e:
-                print(key + "   " + str(e))
+        if return_value is not 0:
+            print("transfer metadata failed")
 
-        for key in metadata_source.iptc_keys:
-            try:
-                metadata_destination[key] = pyexiv2.IptcTag(key, metadata_source[key].value)
-            except Exception as e:
-                print(key + "   " + str(e))
+        # metadata_source = GExiv2.Metadata()
+        # metadata_source.open_path(source)
+        # metadata_destination = GExiv2.Metadata()
+        # metadata_destination.open_path(destination)
 
-        # for key in metadata_source.xmp_keys:
-        #     try:
-        #         metadata_destination[key] = pyexiv2.XmpTag(key, metadata_source[key].value)
-        #     except Exception as e:
-        #         print(key + "   " + str(e))
+        # for item in dir(metadata_source):
+        #     print(item)
 
-        metadata_destination.write()
+        # for tag in metadata_source.get_exif_tags():
+        #     metadata_destination.
+
+        # metadata_destination.write()
 
 
     def _load_data(self):
@@ -289,14 +286,13 @@ class Aligner(object):
         self.translation_data = {}
 
         try:
-            self.translation_data = json.load(open(self.TRANSLATION_DATA, "rb"))
+            self.translation_data = json.load(open(self.TRANSLATION_DATA, "r"))
         except Exception as e:
-            print(str(e))
+            print("load json: " + str(e))
 
 
     def _save_data(self):
-
-        json.dump(self.translation_data, open(self.TRANSLATION_DATA, "wb"))
+        json.dump(self.translation_data, open(self.TRANSLATION_DATA, "w"))
         print("json exported...")
 
 

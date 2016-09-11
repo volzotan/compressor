@@ -9,14 +9,14 @@ import datetime
 import subprocess
 import numpy as np
 from scipy.ndimage.filters import gaussian_filter
-
-import matplotlib.pyplot as plt
-
-import pyexiv2
-from fractions import Fraction
 import math
-
+from fractions import Fraction
+import matplotlib.pyplot as plt
 import support
+
+import gi
+gi.require_version('GExiv2', '0.10')
+from gi.repository import GExiv2
 
 
 """
@@ -43,15 +43,6 @@ import support
 
     argparse
     improve metadata reading
-
-
-    DEPENDENCIES:
-    =============
-
-    * openCV 3      reading and writing images
-    * gexiv2        writing EXIF data
-    -   pyexif2
-    *
 
 """
 
@@ -99,6 +90,10 @@ class Stacker(object):
     PICKLE_INTERVAL     = -1
 
     DEBUG               = True
+
+    # misc
+
+    EXIF_DATE_FORMAT    = '%Y:%m:%d %H:%M:%S'
 
     # debug options
 
@@ -155,9 +150,9 @@ class Stacker(object):
 
         for line in config:
             if len(line) > 1:
-                print line[0].format(support.Color.BOLD + line[1] + support.Color.END)
+                print(line[0].format(support.Color.BOLD + line[1] + support.Color.END))
             else:
-                print line
+                print(line)
 
         print("---------------------------------------")
 
@@ -266,11 +261,18 @@ class Stacker(object):
         earliest_image  = None
         latest_image    = None
 
-        for image in images:
-            metadata = pyexiv2.ImageMetadata(os.path.join(self.INPUT_DIRECTORY, image))
-            metadata.read()
+        #gi.require_version('GExiv2', '0.10')
+        #from gi.repository import GExiv2
 
-            timetaken = metadata["Exif.Photo.DateTimeOriginal"].value
+        for image in images:
+            metadata = GExiv2.Metadata()
+
+            # for item in dir(metadata):
+            #     print(item)
+
+            metadata.open_path(os.path.join(self.INPUT_DIRECTORY, image))
+
+            timetaken = datetime.datetime.strptime(metadata.get_tag_string("Exif.Photo.DateTimeOriginal"), self.EXIF_DATE_FORMAT)
 
             if earliest_image is None or earliest_image[1] > timetaken:
                 earliest_image = (image, timetaken)
@@ -295,17 +297,18 @@ class Stacker(object):
         info["exposure_count"] = len(images)
 
         # focal length
-        metadata = pyexiv2.ImageMetadata(os.path.join(self.INPUT_DIRECTORY, images[0]))
-        metadata.read()
-        try:
-            info["focal_length"] = metadata["Exif.Photo.FocalLength"].value
-        except:
+        metadata = GExiv2.Metadata()
+        metadata.open_path(os.path.join(self.INPUT_DIRECTORY, images[0]))
+
+        info["focal_length"] = metadata.get_focal_length()
+        if info["focal_length"] < 0:
             print("EXIF: focal length missing")
             info["focal_length"] = None
 
         # compressor version
         try:
             info["version"] = subprocess.check_output(["git", "describe", "--always"], cwd=self.BASE_DIR)
+            info["version"] = info["version"].decode("utf-8")
             if info["version"][-1] == "\n":
                 info["version"] = info["version"][:-1]
         except Exception as e:
@@ -319,27 +322,28 @@ class Stacker(object):
 
 
     def write_metadata(self, filepath, info):
-        metadata = pyexiv2.ImageMetadata(filepath)
-        metadata.read()
+        metadata = GExiv2.Metadata()
+        metadata.open_path(filepath)
 
         compressor_name = "compressor v[{}]".format(info["version"])
+        print(compressor_name)
 
         # Exif.Image.ProcessingSoftware is overwritten by Lightroom when the final export is done
-        key = "Exif.Image.ProcessingSoftware";  metadata[key] = pyexiv2.ExifTag(key, compressor_name)
-        key = "Exif.Image.Software";            metadata[key] = pyexiv2.ExifTag(key, compressor_name)
+        key = "Exif.Image.ProcessingSoftware";  metadata.set_tag_string(key, compressor_name)
+        key = "Exif.Image.Software";            metadata.set_tag_string(key, compressor_name)
 
-        key = "Exif.Image.Artist";              metadata[key] = pyexiv2.ExifTag(key, "Christopher Getschmann")
-        key = "Exif.Image.Copyright";           metadata[key] = pyexiv2.ExifTag(key, "CreativeCommons BY-NC 4.0")
-        key = "Exif.Image.ExposureTime";        metadata[key] = pyexiv2.ExifTag(key, Fraction(info["exposure_time"]))
-        key = "Exif.Image.ImageNumber";         metadata[key] = pyexiv2.ExifTag(key, info["exposure_count"])
-        key = "Exif.Image.DateTimeOriginal";    metadata[key] = pyexiv2.ExifTag(key, info["capture_date"])
-        key = "Exif.Image.DateTime";            metadata[key] = pyexiv2.ExifTag(key, info["compressing_date"])
+        key = "Exif.Image.Artist";              metadata.set_tag_string(key, "Christopher Getschmann")
+        key = "Exif.Image.Copyright";           metadata.set_tag_string(key, "CreativeCommons BY-NC 4.0")
+        key = "Exif.Image.ExposureTime";        metadata.set_exif_tag_rational(key, info["exposure_time"], 1)
+        key = "Exif.Image.ImageNumber";         metadata.set_tag_long(key, info["exposure_count"])
+        key = "Exif.Image.DateTimeOriginal";    metadata.set_tag_string(key, info["capture_date"].strftime(self.EXIF_DATE_FORMAT))
+        key = "Exif.Image.DateTime";            metadata.set_tag_string(key, info["compressing_date"].strftime(self.EXIF_DATE_FORMAT))
 
-        # TODO Focal Length
-        key = "Exif.Image.FocalLength";         metadata[key] = pyexiv2.ExifTag(key, info["focal_length"])
+        if info["focal_length"] is not None:
+            key = "Exif.Image.FocalLength";     metadata.set_exif_tag_rational(key, info["focal_length"], 1)
         # TODO GPS Location
 
-        metadata.write()
+        metadata.save_file(filepath)
         print("metadata written to {}".format(filepath))
 
 
@@ -487,6 +491,7 @@ class Stacker(object):
     def _plot(self, mat):
         # plot a numpy array with matplotlib
         plt.imshow(cv2.bitwise_not(cv2.cvtColor(np.asarray(mat, np.uint16), cv2.COLOR_RGB2BGR)), interpolation="nearest")
+        plt.show()
 
     # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
@@ -509,6 +514,7 @@ class Stacker(object):
         self.stop_time("pickle loading: {}{}")
 
         self.LIMIT = len(self.input_images)
+        self.LIMIT = 1
 
         if self.LIMIT <= 0:
             print("no images found. exit.")
@@ -596,7 +602,7 @@ class Stacker(object):
             if self.SAVE_INTERVAL > 0 and self.counter % self.SAVE_INTERVAL == 0:
                 self.save()
 
-            # print("counter: {0:.0f}/{1:.0f}".format(self.counter, len(self.input_images)))
+            print("counter: {0:.0f}/{1:.0f}".format(self.counter, len(self.input_images)), end="\r")
         
 
         filepath = self.save(fixed_name=self.FIXED_OUTPUT_NAME)

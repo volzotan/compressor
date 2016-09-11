@@ -41,9 +41,12 @@ DISPLAY_PEAKING         = False
 # meta
 DIRS_TO_EXPAND          = [ "INPUT_DIR_ALIGNER", 
                             "OUTPUT_DIR_ALIGNER", 
+                            "REFERENCE_IMAGE",
                             "TRANSLATION_DATA",
                             "INPUT_DIR_STACKER", 
                             "OUTPUT_DIR_STACKER",
                             ]
-DIRS_ABORT_IF_MISSING   = ["INPUT_DIR_ALIGNER", "INPUT_DIR_STACKER"]
+
+# DIRS_ABORT_IF_MISSING   = ["INPUT_DIR_ALIGNER", "INPUT_DIR_STACKER"]
+DIRS_ABORT_IF_MISSING   = ["INPUT_DIR_STACKER"]
 DIRS_TO_CREATE          = ["OUTPUT_DIR_ALIGNER", "OUTPUT_DIR_STACKER"]
