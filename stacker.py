@@ -78,7 +78,7 @@ class Stacker(object):
 
     # Peaking
     APPLY_PEAKING                   = True
-    PEAKING_THRESHOLD               = 200 # TODO: don't use fixed values
+    PEAKING_THRESHOLD               = -1
     PEAKING_MUL_FACTOR              = 1.0
     PEAKING_BLUR                    = True
     PEAKING_GAUSSIAN_FILTER_SIZE    = 1
@@ -98,7 +98,7 @@ class Stacker(object):
     # debug options
 
     DISPLAY_PEAKING     = False
-    CLIPPING_VALUE      = 254
+    CLIPPING_VALUE      = -1
 
     # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
@@ -127,6 +127,14 @@ class Stacker(object):
 
         self.tresor = None
         self.peaking_tresor = None
+
+        if self.CLIPPING_VALUE < 0 and self.EXTENSION == ".jpg":
+            self.CLIPPING_VALUE = 2**8 - 1
+        if self.CLIPPING_VALUE < 0 and self.EXTENSION == ".tif":
+            self.CLIPPING_VALUE = 2**16 - 1
+
+        if self.PEAKING_THRESHOLD < 0:
+            self.PEAKING_THRESHOLD = self.CLIPPING_VALUE - (self.CLIPPING_VALUE / 20.0) # peaking above 95%
 
     # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
@@ -266,10 +274,6 @@ class Stacker(object):
 
         for image in images:
             metadata = GExiv2.Metadata()
-
-            # for item in dir(metadata):
-            #     print(item)
-
             metadata.open_path(os.path.join(self.INPUT_DIRECTORY, image))
 
             timetaken = datetime.datetime.strptime(metadata.get_tag_string("Exif.Photo.DateTimeOriginal"), self.EXIF_DATE_FORMAT)
@@ -369,20 +373,20 @@ class Stacker(object):
         curve = []
 
         for image in images:
-            metadata = pyexiv2.ImageMetadata(os.path.join(self.INPUT_DIRECTORY, image))
-            metadata.read()
+            metadata = GExiv2.Metadata()
+            metadata.open_path(os.path.join(self.INPUT_DIRECTORY, image))
 
-            shutter = float(metadata["Exif.Photo.ExposureTime"].value)
-            iso     = metadata["Exif.Photo.ISOSpeedRatings"].value
+            shutter = metadata.get_exposure_time()
+            shutter = float(shutter[0]) / float(shutter[1])
+            iso     = int(metadata.get_tag_string("Exif.Photo.ISOSpeedRatings"))
 
             try: 
-                time = metadata["Exif.Image.DateTimeOriginal"].value
-            except KeyError as e:
-                time = metadata["Exif.Image.DateTime"].value
+                time = datetime.datetime.strptime(metadata.get_tag_string("Exif.Photo.DateTimeOriginal"), self.EXIF_DATE_FORMAT)
+            except Exception as e:
+                time = datetime.datetime.strptime(metadata.get_tag_string("Exif.Image.DateTime"), self.EXIF_DATE_FORMAT)
 
-            try:
-                aperture = float(metadata["Exif.Photo.ApertureValue"].value)
-            except KeyError as e:
+            aperture = metadata.get_focal_length()
+            if aperture < 0:
                 # no aperture tag set, probably an lens adapter was used. assume fixed aperture.
                 aperture = None
 
@@ -514,7 +518,6 @@ class Stacker(object):
         self.stop_time("pickle loading: {}{}")
 
         self.LIMIT = len(self.input_images)
-        self.LIMIT = 1
 
         if self.LIMIT <= 0:
             print("no images found. exit.")

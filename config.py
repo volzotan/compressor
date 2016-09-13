@@ -1,31 +1,31 @@
 # aligner
-INPUT_DIR_ALIGNER       = "/Users/volzotan/GIT/compressor/images_jpegs"
+INPUT_DIR_ALIGNER       = "~/Desktop/export_TIFF"
 TRANSLATION_DATA        = "translation_data.json"
 OUTPUT_DIR_ALIGNER      = "aligned"
 
-REFERENCE_IMAGE         = "/Users/volzotan/Desktop/export_tiff/DSC03660.tif"
+REFERENCE_IMAGE         = "~/Desktop/peakingtest/DSC04370.jpg"
 
 RESET_MATRIX_EVERY_LOOP = False
 DOWNSIZE                = True
-SKIP_TRANSLATION        = 10
+SKIP_TRANSLATION        = -1
 
 JSON_SAVE_INTERVAL      = 10
 
 # stacker
 NAMING_PREFIX           = ""
-INPUT_DIR_STACKER       = "~/Desktop/peakingtest"
-OUTPUT_DIR_STACKER      = "/Users/volzotan/GIT/compressor/output"
-FIXED_OUTPUT_NAME       = "frontlaan_peaking_value0.4.jpg"
-EXTENSION               = ".jpg"
+INPUT_DIR_STACKER       = "~/Desktop/export_tiff"
+OUTPUT_DIR_STACKER      = "/Users/volzotan/GIT/compressor/output_jubelpark"
+FIXED_OUTPUT_NAME       = "jubelpark.tif"
+EXTENSION               = ".tif"
 PICKLE_NAME             = "stack.pickle"
 
 ALIGN                   = False
 
 DISPLAY_CURVE           = False
-APPLY_CURVE             = False
+APPLY_CURVE             = True
 
-APPLY_PEAKING           = True
-PEAKING_THRESHOLD       = 250
+APPLY_PEAKING           = False
+PEAKING_THRESHOLD       = -1    # auto
 PEAKING_MUL_FACTOR      = 0.4
 
 WRITE_METADATA          = True            
