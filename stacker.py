@@ -34,15 +34,18 @@ from gi.repository import GExiv2
     * total exposure time
 
     and (should, still TODO) reapply extracted Metadata:
-    * focal length
     * camera model
     * GPS Location Data
     * Address Location Data (City, Province-State, Location Code, etc)
 
     TODO:
 
-    argparse
     improve metadata reading
+    change how the curve is applied
+        problem: logarithmic curve is applied linear
+        daytime is e.g. 20 while dawn is 16
+        (daytime image shall be 8x brighter,
+        but is only 20 percent brighter)
 
 """
 
@@ -89,7 +92,7 @@ class Stacker(object):
     SAVE_INTERVAL       = 15
     PICKLE_INTERVAL     = -1
 
-    DEBUG               = True
+    DEBUG               = False
 
     # misc
 
@@ -199,8 +202,6 @@ class Stacker(object):
         else:
             t = t / (self.counter)
 
-
-
         if self.APPLY_PEAKING:
 
             """
@@ -290,6 +291,9 @@ class Stacker(object):
             info["exposure_time"] = 0
             print("exposure_time could not be computed")
 
+        metadata = GExiv2.Metadata()
+        metadata.open_path(os.path.join(self.INPUT_DIRECTORY, images[0]))
+
         # capture date
         if latest_image is not None:
             info["capture_date"] = latest_image[1]
@@ -301,9 +305,6 @@ class Stacker(object):
         info["exposure_count"] = len(images)
 
         # focal length
-        metadata = GExiv2.Metadata()
-        metadata.open_path(os.path.join(self.INPUT_DIRECTORY, images[0]))
-
         info["focal_length"] = metadata.get_focal_length()
         if info["focal_length"] < 0:
             print("EXIF: focal length missing")
@@ -402,10 +403,10 @@ class Stacker(object):
             # range 0 to 1, because we have to invert the camera values to derive the brightness
             # value of the camera environment
 
-            image_name                          = curve[i][0]
-            time                                = curve[i][1]
-            relative_brightness_value           = np.interp(curve[i][2], [min_brightness, max_brightness], [1, 0]) # range [0;1]
-            inverted_absolute_value             = np.interp(curve[i][2], [min_brightness, max_brightness], [max_brightness, min_brightness])
+            image_name                  = curve[i][0]
+            time                        = curve[i][1]
+            relative_brightness_value   = np.interp(curve[i][2], [min_brightness, max_brightness], [1, 0]) # range [0;1]
+            inverted_absolute_value     = np.interp(curve[i][2], [min_brightness, max_brightness], [max_brightness, min_brightness])
 
             # right now the inverted absolute brightness, which is used for the weighted curve calculation,
             # is quite a large number. Usually around 20. (but every image is multiplied with it's respective value,
@@ -415,7 +416,7 @@ class Stacker(object):
 
             # inverted_absolute_value = inverted_absolute_value - min_brightness + 1
 
-            curve[i] = (image_name, time, relative_brightness_value, inverted_absolute_value)
+            curve[i] = (image_name, time, relative_brightness_value, 2**inverted_absolute_value)
 
         values = [x[2] for x in curve]
         self.curve_avg = sum(values) / float(len(values))
@@ -544,6 +545,11 @@ class Stacker(object):
         # Curve
         if self.DISPLAY_CURVE or self.APPLY_CURVE:
             self.curve = self.calculate_brightness_curve(self.input_images)
+            
+            # for item in self.curve:
+            #     print(item)
+
+            # sys.exit(0)
             self.stop_time("compute brightness curve: {}{}")
 
         if self.DISPLAY_CURVE:

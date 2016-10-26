@@ -11,4 +11,4 @@ sudo apt-get install python3-gi
 sudo pip3 install pillow
 sudo pip3 install scipy
 sudo pip3 install matplotlib
-sudo pip3 install yaml
+sudo pip3 install pyyaml
