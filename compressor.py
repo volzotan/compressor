@@ -122,6 +122,7 @@ stacker.WRITE_METADATA      = config.WRITE_METADATA
 stacker.SORT_IMAGES         = config.SORT_IMAGES
 
 stacker.SAVE_INTERVAL       = config.SAVE_INTERVAL
+stacker.INTERMEDIATE_SAVE_FORCE_JPEG = config.INTERMEDIATE_SAVE_FORCE_JPEG
 stacker.PICKLE_INTERVAL     = config.PICKLE_INTERVAL
 
 stacker.print_config()

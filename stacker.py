@@ -178,12 +178,16 @@ class Stacker(object):
         del pick
 
 
-    def save(self, fixed_name=None):
+    def save(self, fixed_name=None, force_jpeg=False):
 
         filename = None
 
         if fixed_name is None:
             filename = str(self.counter) + self.EXTENSION
+
+            if force_jpeg:
+                filename = str(self.counter) + ".jpg"
+
             if len(self.NAMING_PREFIX) > 0:
                 filename = self.NAMING_PREFIX + "_" + filename
         else:
@@ -277,7 +281,10 @@ class Stacker(object):
             metadata = GExiv2.Metadata()
             metadata.open_path(os.path.join(self.INPUT_DIRECTORY, image))
 
-            timetaken = datetime.datetime.strptime(metadata.get_tag_string("Exif.Photo.DateTimeOriginal"), self.EXIF_DATE_FORMAT)
+            try:
+                timetaken = datetime.datetime.strptime(metadata.get_tag_string("Exif.Photo.DateTimeOriginal"), self.EXIF_DATE_FORMAT)
+            except Exception as e:
+                continue;
 
             if earliest_image is None or earliest_image[1] > timetaken:
                 earliest_image = (image, timetaken)
@@ -609,7 +616,7 @@ class Stacker(object):
                 self.reset_timer()
 
             if self.SAVE_INTERVAL > 0 and self.counter % self.SAVE_INTERVAL == 0:
-                self.save()
+                self.save(force_jpeg=self.INTERMEDIATE_SAVE_FORCE_JPEG)
 
             print("counter: {0:.0f}/{1:.0f}".format(self.counter, len(self.input_images)), end="\r")
         

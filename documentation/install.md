@@ -3,10 +3,10 @@
 ## EXIF related:
 
 brew install pygobject3 --with-python3
+brew install tesseract (?)
 
 ### ubuntu:
 sudo apt-get install python3-gi
-
 
 sudo pip3 install pillow
 sudo pip3 install scipy
