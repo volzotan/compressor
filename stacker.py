@@ -346,13 +346,13 @@ class Stacker(object):
 
         key = "Exif.Image.Artist";              metadata.set_tag_string(key, "Christopher Getschmann")
         key = "Exif.Image.Copyright";           metadata.set_tag_string(key, "CreativeCommons BY-NC 4.0")
-        key = "Exif.Image.ExposureTime";        metadata.set_exif_tag_rational(key, info["exposure_time"], 1)
+        key = "Exif.Image.ExposureTime";        metadata.set_exif_tag_rational(key, info["exposure_time"])
         key = "Exif.Image.ImageNumber";         metadata.set_tag_long(key, info["exposure_count"])
         key = "Exif.Image.DateTimeOriginal";    metadata.set_tag_string(key, info["capture_date"].strftime(self.EXIF_DATE_FORMAT))
         key = "Exif.Image.DateTime";            metadata.set_tag_string(key, info["compressing_date"].strftime(self.EXIF_DATE_FORMAT))
 
         if info["focal_length"] is not None:
-            key = "Exif.Image.FocalLength";     metadata.set_exif_tag_rational(key, info["focal_length"], 1)
+            key = "Exif.Image.FocalLength";     metadata.set_exif_tag_rational(key, info["focal_length"])
         # TODO GPS Location
 
         metadata.save_file(filepath)
