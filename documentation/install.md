@@ -7,6 +7,7 @@ brew install tesseract (?)
 
 ### ubuntu:
 sudo apt-get install python3-gi
+sudo apt-get install gir1.2-gexiv2-0.10
 
 sudo pip3 install pillow
 sudo pip3 install scipy

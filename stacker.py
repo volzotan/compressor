@@ -385,7 +385,7 @@ class Stacker(object):
             metadata.open_path(os.path.join(self.INPUT_DIRECTORY, image))
 
             shutter = metadata.get_exposure_time()
-            shutter = float(shutter[0]) / float(shutter[1])
+            shutter = float(shutter)
             iso     = int(metadata.get_tag_string("Exif.Photo.ISOSpeedRatings"))
 
             try: 
@@ -573,6 +573,7 @@ class Stacker(object):
                 continue
 
             # read input as 16bit color TIFF
+            # TODO: use numpy to load the image!
             im = cv2.imread(os.path.join(self.INPUT_DIRECTORY, f), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
             self.stopwatch["load_image"] += self.stop_time()
 
