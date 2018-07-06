@@ -183,7 +183,9 @@ class Stacker(object):
         filename = None
 
         if fixed_name is None:
-            filename = str(self.counter) + self.EXTENSION
+            # {0:0Nd}{1} where N is used to pad to the length of the highest number of images (eg. 001 for 256 images)
+            pattern = str("{0:0") + str(len(str(len(self.input_images)))) + str("d}{1}")
+            filename = pattern.format(self.counter, self.EXTENSION)
 
             if force_jpeg:
                 filename = str(self.counter) + ".jpg"
@@ -346,7 +348,7 @@ class Stacker(object):
 
         key = "Exif.Image.Artist";              metadata.set_tag_string(key, "Christopher Getschmann")
         key = "Exif.Image.Copyright";           metadata.set_tag_string(key, "CreativeCommons BY-NC 4.0")
-        key = "Exif.Image.ExposureTime";        metadata.set_exif_tag_rational(key, info["exposure_time"])
+        key = "Exif.Image.ExposureTime";        metadata.set_exif_tag_rational(key, info["exposure_time"], 1)
         key = "Exif.Image.ImageNumber";         metadata.set_tag_long(key, info["exposure_count"])
         key = "Exif.Image.DateTimeOriginal";    metadata.set_tag_string(key, info["capture_date"].strftime(self.EXIF_DATE_FORMAT))
         key = "Exif.Image.DateTime";            metadata.set_tag_string(key, info["compressing_date"].strftime(self.EXIF_DATE_FORMAT))
@@ -385,13 +387,26 @@ class Stacker(object):
             metadata.open_path(os.path.join(self.INPUT_DIRECTORY, image))
 
             shutter = metadata.get_exposure_time()
-            shutter = float(shutter)
-            iso     = int(metadata.get_tag_string("Exif.Photo.ISOSpeedRatings"))
+            try:
+                shutter = float(shutter)
+            except TypeError as e:
+                if (shutter[1] != 0):
+                    shutter = shutter[0] / shutter[1]
+                else:
+                    shutter = shutter[0]
 
-            try: 
-                time = datetime.datetime.strptime(metadata.get_tag_string("Exif.Photo.DateTimeOriginal"), self.EXIF_DATE_FORMAT)
-            except Exception as e:
-                time = datetime.datetime.strptime(metadata.get_tag_string("Exif.Image.DateTime"), self.EXIF_DATE_FORMAT)
+            iso = metadata.get_tag_string("Exif.Photo.ISOSpeedRatings");
+            if iso is not None:
+                iso = int(iso)
+            else:
+                iso = 100 
+
+            time = metadata.get_tag_string("Exif.Photo.DateTimeOriginal")
+            if time is None:
+                time = metadata.get_tag_string("Exif.Image.DateTime")
+                if time is None:
+                    raise Exception("time exif data missing. no brightness curve can be calculated (well it could, but time data is required for the graph")    
+            time = datetime.datetime.strptime(time, self.EXIF_DATE_FORMAT)
 
             aperture = metadata.get_focal_length()
             if aperture < 0:
@@ -495,9 +510,13 @@ class Stacker(object):
 
         # still_123.jpg
 
-        pos = value.index(".")
-        number = value[6:pos]
-        return int(number)
+        if value.startswith("still_"):
+            pos = value.index(".")
+            number = value[6:pos]
+            return int(number)
+        else:
+            filename = os.path.splitext(value)[0]
+            return int(filename)
 
 
     def _plot(self, mat):
