@@ -1,0 +1,4 @@
+pillow
+scipy
+matplotlib
+pyyaml
