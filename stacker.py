@@ -1,19 +1,26 @@
 #!/usr/bin/env python
 
-from PIL import Image
-
-import cv2
 import json
-import sys, os
+import sys
+import os
 import pickle
 import datetime
 import subprocess
+import support
+
+from PIL import Image
+
+import cv2
+
 import numpy as np
+
 from scipy.ndimage.filters import gaussian_filter
+import imageio
+
 import math
 from fractions import Fraction
+
 import matplotlib.pyplot as plt
-import support
 
 import gi
 gi.require_version('GExiv2', '0.10')
@@ -257,23 +264,6 @@ class Stacker(object):
         s = np.asarray(t, np.uint16)
         cv2.imwrite(filepath, s)
 
-        self.stopwatch["write_image"] += self.stop_time()
-
-        # time calculations
-
-        timeperimage = 0
-        for key in self.stopwatch:
-            timeperimage += self.stopwatch[key]
-        timeperimage -= self.stopwatch["write_image"]
-        timeperimage /= self.counter
-
-        images_remaining = (self.LIMIT - self.counter) 
-        est_remaining = images_remaining * timeperimage + ( (images_remaining/self.SAVE_INTERVAL) * (self.stopwatch["write_image"]/self.counter) )
-
-        save_time = self.stopwatch["write_image"]/(self.counter/self.SAVE_INTERVAL)
-
-        print("saved. counter: {0:3d} time total: {1:3d} saving image: {2:3d} time per image: {3:3d} est. remaining: {4:5d} || {5}".format(self.counter, int((datetime.datetime.now()-self.starttime).total_seconds()), int(save_time), int(timeperimage), int(est_remaining), support.Converter().humanReadableSeconds(est_remaining)))
-        #print self.stopwatch
         return filepath
 
 
@@ -414,6 +404,9 @@ class Stacker(object):
             metadata.open_path(os.path.join(self.INPUT_DIRECTORY, image))
 
             shutter = metadata.get_exposure_time()
+            if shutter[0] == 0 and shutter[1] == 0:
+                print("EXIF data missing for image: {}".format(image))
+                sys.exit(-1)
             try:
                 shutter = float(shutter)
             except TypeError as e:
@@ -432,6 +425,9 @@ class Stacker(object):
             if time is None:
                 time = metadata.get_tag_string("Exif.Image.DateTime")
                 if time is None:
+                    # TODO: evil hack
+                    # if image.endswith("_0" + self.EXTENSION):
+                    #     time = datetime.datetime.fromtimestamp(int(image[:-6])/1000).strftime(self.EXIF_DATE_FORMAT)
                     raise Exception("time exif data missing. no brightness curve can be calculated (well it could, but time data is required for the graph")    
             time = datetime.datetime.strptime(time, self.EXIF_DATE_FORMAT)
 
@@ -521,7 +517,6 @@ class Stacker(object):
             sys.exit(0)
 
         self.peaking_tresor = np.add(self.peaking_tresor, datacopy)
-        self.stopwatch["peaking"] += self.stop_time()
 
 
     def stop_time(self, msg=None):
@@ -570,6 +565,47 @@ class Stacker(object):
         plt.imshow(cv2.bitwise_not(cv2.cvtColor(np.asarray(mat, np.uint16), cv2.COLOR_RGB2BGR)), interpolation="nearest")
         plt.show()
 
+
+    def print_info(self):
+
+        # time calculations
+
+        timeperimage = 0
+        for key in self.stopwatch:
+            timeperimage += self.stopwatch[key]
+        timeperimage -= self.stopwatch["write_image"]
+        timeperimage /= self.counter
+
+        images_remaining = (self.LIMIT - self.counter) 
+        est_remaining = images_remaining * timeperimage + ( (images_remaining/self.SAVE_INTERVAL) * (self.stopwatch["write_image"]/self.counter) )
+
+        save_time = self.stopwatch["write_image"]/(self.counter/self.SAVE_INTERVAL)
+
+        status =  "saved. counter: {:3d} | ".format(         self.counter) 
+        status += "time total: {:.1f} | ".format(            (datetime.datetime.now()-self.starttime).total_seconds())
+        status += "saving image: {:.1f} | ".format(          save_time) 
+        status += "time per image: {:.1f} | ".format(        timeperimage)
+        status += "est. remaining: {:.1f} || ".format(       est_remaining)
+        status += support.Converter().humanReadableSeconds( est_remaining)
+        
+        text =  "load_image: {load_image:.3f} | "
+        text += "transform_image: {transform_image:.3f} | "
+        text += "convert_to_array: {convert_to_array:.3f} | "
+        text += "curve: {curve:.3f} | "
+        text += "peaking: {peaking:.3f} | "
+        text += "adding: {adding:.3f} | "
+        text += "write_image: {write_image:.3f}"
+
+        stopwatch_avg = self.stopwatch.copy()
+        for key in stopwatch_avg:
+            stopwatch_avg[key] /= self.counter
+        # stopwatch_avg["write_image"] *= self.counter
+        # stopwatch_avg["write_image"] /= int(self.counter/self.SAVE_INTERVAL)
+
+        print(status + "\n" + text.format(**stopwatch_avg), end="\r")
+
+        # print(self.stopwatch)
+
     # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
     def process(self, f):
@@ -580,7 +616,8 @@ class Stacker(object):
 
         # read input as 16bit color TIFF
         # TODO: use numpy to load the image!
-        im = cv2.imread(os.path.join(self.INPUT_DIRECTORY, f), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
+        image_path = os.path.join(self.INPUT_DIRECTORY, f)
+        im = cv2.imread(image_path, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
         self.stopwatch["load_image"] += self.stop_time()
 
         if self.ALIGN:
@@ -610,6 +647,7 @@ class Stacker(object):
 
         if self.APPLY_PEAKING:
             self.apply_peaking(data)
+            self.stopwatch["peaking"] += self.stop_time()
 
         self.stacked_images.append(f)
 
@@ -626,7 +664,11 @@ class Stacker(object):
         if self.SAVE_INTERVAL > 0 and self.counter % self.SAVE_INTERVAL == 0:
             self.save(force_jpeg=self.INTERMEDIATE_SAVE_FORCE_JPEG)
 
-        print("counter: {0:.0f}/{1:.0f}".format(self.counter, len(self.input_images)), end="\r")
+        self.stopwatch["write_image"] += self.stop_time()
+
+        self.print_info()
+
+        # print("counter: {0:.0f}/{1:.0f}".format(self.counter, len(self.input_images)), end="\r")
 
 
     def run(self, inp_imgs):
