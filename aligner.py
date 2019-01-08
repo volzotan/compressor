@@ -6,6 +6,9 @@ import json
 import traceback
 import subprocess
 
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+
 import gi
 gi.require_version('GExiv2', '0.10')
 from gi.repository import GExiv2
@@ -35,6 +38,7 @@ class Aligner(object):
 
     # Options
     DOWNSIZE                        = True
+    DOWNSIZE_FACTOR                 = 4.0
     CROP                            = False
     TRANSFER_METADATA               = True
     RESET_MATRIX_EVERY_LOOP         = True
@@ -43,8 +47,8 @@ class Aligner(object):
 
     # ECC Algorithm
     NUMBER_OF_ITERATIONS            = 1000
-    TERMINATION_EPS                 = 1e-10
-    WARP_MODE                       = cv2.MOTION_TRANSLATION #cv2.MOTION_HOMOGRAPHY
+    TERMINATION_EPS                 = 1e-10 #1e-6
+    WARP_MODE                       = cv2.MOTION_TRANSLATION #cv2.MOTION_EUCLIDIAN #cv2.MOTION_TRANSLATION #cv2.MOTION_HOMOGRAPHY
 
     def __init__(self):
 
@@ -72,7 +76,7 @@ class Aligner(object):
 
         if self.DOWNSIZE:
             # proceed with downsized version
-            self.reference_image = cv2.resize(self.reference_image, (0,0), fx=0.25, fy=0.25)
+            self.reference_image = cv2.resize(self.reference_image, (0,0), fx=1.0/self.DOWNSIZE_FACTOR, fy=1.0/self.DOWNSIZE_FACTOR)
 
         self.reference_image_gray = None
         self.reference_image_gray = cv2.cvtColor(self.reference_image,cv2.COLOR_BGR2GRAY)
@@ -105,7 +109,7 @@ class Aligner(object):
 
         # proceed with downsized version
         if self.DOWNSIZE:
-            im2_downsized = cv2.resize(im2, (0,0), fx=0.25, fy=0.25)
+            im2_downsized = cv2.resize(im2, (0,0), fx=1.0/self.DOWNSIZE_FACTOR, fy=1.0/self.DOWNSIZE_FACTOR)
         else:
             im2_downsized = im2
 
@@ -119,19 +123,13 @@ class Aligner(object):
         except Exception as e:
             raise e
 
-        # TODO:
-        # Problem: right now rotation values from the warp_matrix are discarded, just
-        # plain and stupid translation takes place
-
-        print(warp_matrix)
-
-        if self.DOWNSIZE:
-            return (im2, warp_matrix, warp_matrix[0][2] * 4, warp_matrix[1][2] * 4)
-        else:
-            return (im2, warp_matrix, warp_matrix[0][2], warp_matrix[1][2])
+        return (im2, warp_matrix)
 
 
     def step1(self, images):
+
+        # sort images
+        images = sorted(images, key=lambda filename: os.path.splitext(os.path.basename(filename))[0])
 
         self._load_data()
 
@@ -159,7 +157,7 @@ class Aligner(object):
             timer_start = datetime.datetime.now()
             if not skip:
                 try:
-                    (image_object, new_warp_matrix, translation_x, translation_y) = self.calculate_translation_values(image, warp_matrix)
+                    (image_object, new_warp_matrix) = self.calculate_translation_values(image, warp_matrix)
                 except Exception as e:
                     self.failed += 1
                     timediff = datetime.datetime.now() - timer_start
@@ -172,15 +170,23 @@ class Aligner(object):
                 warp_matrix = new_warp_matrix
             else:
                 new_warp_matrix = self._create_warp_matrix()
-                translation_x = 0
-                translation_y = 0
 
             timediff = datetime.datetime.now() - timer_start
             self.success += 1
 
+            save_matrix = new_warp_matrix.copy()
+            if self.DOWNSIZE:
+                if self.WARP_MODE == cv2.MOTION_HOMOGRAPHY:
+                    save_matrix = save_matrix * np.array([[1, 1, self.DOWNSIZE_FACTOR], [1, 1, self.DOWNSIZE_FACTOR], [1.0/self.DOWNSIZE_FACTOR, 1.0/self.DOWNSIZE_FACTOR, 1]])
+                else:
+                    save_matrix = save_matrix * np.array([[1, 1, self.DOWNSIZE_FACTOR], [1, 1, self.DOWNSIZE_FACTOR]])
+
+            translation_x = save_matrix[0][2]
+            translation_y = save_matrix[1][2]
+
             # numpy float32 to python float
-            #                                                         calculated translation in both axes           corrected values
-            self.translation_data[image] = (new_warp_matrix.tolist(), (float(translation_x), float(translation_y)), (0.0, 0.0))
+            #                                                     calculated translation in both axes           corrected values
+            self.translation_data[image] = (save_matrix.tolist(), (float(translation_x), float(translation_y)), (0.0, 0.0))
 
             if not skip:
                 print(OUTPUT_STR.format(image, self.counter, len(images), self.skipped, self.success, self.failed, self.outlier, timediff.total_seconds()))
@@ -189,6 +195,48 @@ class Aligner(object):
                 self._save_data()
 
         self._save_data()
+        self.display_curve()
+
+
+    def display_curve(self):
+
+        trans_x = []
+        trans_y = []
+        trans_abs = []
+
+        for item in self.translation_data:
+            trans_x.append(self.translation_data[item][1][0])
+            trans_y.append(self.translation_data[item][1][1])
+            trans_abs.append(abs(self.translation_data[item][1][0]) + abs(self.translation_data[item][1][1]))
+
+        xs = [x for x in range(0, len(trans_x))]
+
+        # plt.subplot(3, 1, 1)
+        # plt.plot(xs, trans_x)
+        # plt.title('foo')
+        # plt.ylabel('trans x')
+
+        # plt.subplot(3, 1, 2)
+        # plt.plot(xs, trans_y)
+        # plt.ylabel('trans y')
+
+        # plt.subplot(3, 1, 3)
+        # plt.plot(xs, trans_abs)
+        # plt.xlabel('images')
+        # plt.ylabel('trans abs')
+
+
+        plt.plot(xs, trans_x, color='#00ff00')
+        plt.plot(xs, trans_y, color='#0000ff')
+        plt.plot(xs, trans_abs, color='#999999')
+
+        custom_lines = [Line2D([0], [0], color="#00ff00", lw=4),
+                        Line2D([0], [0], color="#0000ff", lw=4),
+                        Line2D([0], [0], color="#999999", lw=4)]
+
+        plt.legend(custom_lines, ['x', 'y', 'x+y abs'], loc=0)
+
+        plt.savefig(os.path.join(self.OUTPUT_DIR, "alignplot.png"))
 
 
     def step2(self):
@@ -223,6 +271,8 @@ class Aligner(object):
             timer_start = datetime.datetime.now()
 
             im2 = self._read_image_and_crop(source_file)
+
+            # TODO: rather use warpAffine?
 
             im2_aligned = self.transform(im2, x, y)
 
