@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from PIL import Image
+
 import cv2
 import json
 import sys, os
@@ -131,13 +132,20 @@ class Stacker(object):
         self.tresor = None
         self.peaking_tresor = None
 
+
+    """
+    After the class variables have been overwritten with the config from the compressor.py script,
+    some default values may need to be calculated.
+    """
+    def post_init(self):
+
         if self.CLIPPING_VALUE < 0 and self.EXTENSION == ".jpg":
             self.CLIPPING_VALUE = 2**8 - 1
         if self.CLIPPING_VALUE < 0 and self.EXTENSION == ".tif":
             self.CLIPPING_VALUE = 2**16 - 1
 
         if self.PEAKING_THRESHOLD < 0:
-            self.PEAKING_THRESHOLD = self.CLIPPING_VALUE - (self.CLIPPING_VALUE / 20.0) # peaking above 95%
+            self.PEAKING_THRESHOLD = self.CLIPPING_VALUE - (self.CLIPPING_VALUE / 50.0) # peaking above 97.5%
 
     # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
@@ -212,7 +220,7 @@ class Stacker(object):
 
             """
             different methods of peaking:
-            * sum up all the peaking values, apply the multiplication factor and add to tresor before the dividing happens
+            * sum up all the peaking values, apply the multiplication factor and add to tresor before the division happens
             * sum up all the peaking values, clip the limits at the max allowed value
 
             PEAKING_MUL_FACTOR doesn't need to be a fixed value, it may be also something like counter/2
@@ -371,11 +379,16 @@ class Stacker(object):
 
         # limits in this calculations:
         # min shutter is 1/4000th second
+
         # min aperture is 22
+        # apertures: 22  16  11   8 5.6   4 2.8 2.0 1.4   1
+        #            10   9   8   7   6   5   4   3   2   1  
+        # log-value: 4.4               ...                0
+
         # min iso is 100
 
         shutter_repr    = math.log(shutter, 2) + 13 # offset = 13 to accomodate shutter values down to 1/4000th second
-        iso_repr        = math.log(iso/100, 2) + 1  # offset = 1, iso 100 -> 1, not 0
+        iso_repr        = math.log(iso/100.0, 2) + 1  # offset = 1, iso 100 -> 1, not 0
 
         if aperture is not None:
             aperture_repr = np.interp(math.log(aperture, 2), [0, 4.5], [10, 1])
@@ -383,6 +396,14 @@ class Stacker(object):
             aperture_repr = 1
 
         return shutter_repr + aperture_repr + iso_repr
+
+
+    def _luminosity(self, image):
+        return 0
+
+        # TODO: check for broken image?
+        #im = cv2.imread(os.path.join(self.INPUT_DIRECTORY, f), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
+        #luma = 0.2126 * R + 0.7152 * G + 0.0722 * B
 
 
     def calculate_brightness_curve(self, images):
@@ -419,7 +440,7 @@ class Stacker(object):
                 # no aperture tag set, probably an lens adapter was used. assume fixed aperture.
                 aperture = None
 
-            curve.append((image, time, self._intensity(shutter, aperture, iso)))
+            curve.append((image, time, self._intensity(shutter, aperture, iso), self._luminosity(image)))
 
         # normalize
         values = [x[2] for x in curve]
@@ -435,6 +456,7 @@ class Stacker(object):
             time                        = curve[i][1]
             relative_brightness_value   = np.interp(curve[i][2], [min_brightness, max_brightness], [1, 0]) # range [0;1]
             inverted_absolute_value     = np.interp(curve[i][2], [min_brightness, max_brightness], [max_brightness, min_brightness])
+            luminosity_value            = curve[i][3]
 
             # right now the inverted absolute brightness, which is used for the weighted curve calculation,
             # is quite a large number. Usually around 20. (but every image is multiplied with it's respective value,
@@ -444,7 +466,9 @@ class Stacker(object):
 
             # inverted_absolute_value = inverted_absolute_value - min_brightness + 1
 
-            curve[i] = (image_name, time, relative_brightness_value, 2**inverted_absolute_value)
+            print(inverted_absolute_value)
+
+            curve[i] = (image_name, time, relative_brightness_value, 2**inverted_absolute_value, luminosity_value)
 
         values = [x[2] for x in curve]
         self.curve_avg = sum(values) / float(len(values))
@@ -454,10 +478,15 @@ class Stacker(object):
 
     def display_curve(self, curve):
         dates = [i[1] for i in curve]
-        values = [i[3] for i in curve]
+        values_exif = [i[3] for i in curve]
+        values_luminosity = [i[4] for i in curve]
 
-        plt.plot(dates, values)
-        plt.show()
+        print(values_exif)
+
+        plt.plot(dates, values_exif)
+        # plt.plot(dates, values_luminosity)
+        plt.savefig(os.path.join(self.RESULT_DIRECTORY, "curveplot.png"))
+        # plt.show()
 
 
     def apply_peaking(self, data):
@@ -483,10 +512,10 @@ class Stacker(object):
             #plt.imshow(~mask_all_channels, cmap="Greys", vmin=0, vmax=1)
 
             s = np.asarray(datacopy, np.uint16)
-            cv2.imwrite(os.path.join(self.RESULT_DIRECTORY, "plot.jpg"), s)
+            cv2.imwrite(os.path.join(self.RESULT_DIRECTORY, "peaking.jpg"), s)
 
             #plt.imshow(cv2.cvtColor(s, cv2.COLOR_BGR2RGB))
-            self._plot(datacopy)
+            # self._plot(datacopy)
 
             # plt.show()
             sys.exit(0)
@@ -519,10 +548,21 @@ class Stacker(object):
         if value.startswith("still_"):
             pos = value.index(".")
             number = value[6:pos]
+            return int(number)        
+        elif value.startswith("DSCF"):
+            pos = value.index(".")
+            number = value[4:pos]
+            return int(number)
+        elif value.startswith("DSC"):
+            pos = value.index(".")
+            number = value[3:pos]
             return int(number)
         else:
-            filename = os.path.splitext(value)[0]
-            return int(filename)
+            try:
+                filename = os.path.splitext(value)[0]
+                return int(filename)
+            except ValueError as e:
+                return 0
 
 
     def _plot(self, mat):
@@ -531,6 +571,63 @@ class Stacker(object):
         plt.show()
 
     # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
+
+    def process(self, f):
+
+        self.counter += 1
+        if f in self.stacked_images:
+            return
+
+        # read input as 16bit color TIFF
+        # TODO: use numpy to load the image!
+        im = cv2.imread(os.path.join(self.INPUT_DIRECTORY, f), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
+        self.stopwatch["load_image"] += self.stop_time()
+
+        if self.ALIGN:
+
+            if self.USE_CORRECTED_TRANSLATION_DATA:
+                # translation_data[f] = ( (computed_x, computed_y), (corrected_x, corrected_y) ) 
+                (x, y) = (self.translation_data[f][2][0], self.translation_data[f][2][1])
+            else:
+                (x, y) = (self.translation_data[f][1][0], self.translation_data[f][1][1])
+
+            im = self.aligner.transform(im, x, y)
+            self.stopwatch["transform_image"] += self.stop_time()
+
+        # data = np.array(im, np.int) # 100ms slower per image
+        data = np.uint64(np.asarray(im, np.uint64))
+        self.stopwatch["convert_to_array"] += self.stop_time()
+
+        if not self.APPLY_CURVE:
+            self.tresor = np.add(self.tresor, data)
+
+        if self.APPLY_CURVE:
+            multiplier = self.curve[self.counter-1][3]
+            self.tresor = np.add(self.tresor, data * multiplier)
+            self.weighted_average_divider += multiplier
+
+        self.stopwatch["adding"] += self.stop_time()
+
+        if self.APPLY_PEAKING:
+            self.apply_peaking(data)
+
+        self.stacked_images.append(f)
+
+        # TODO: limit currently disabled because this piece of code is not running directly in a loop anymore
+        # if self.counter >= self.LIMIT:
+        #     if self.PICKLE_INTERVAL > 0:
+        #         self.write_pickle(self.tresor, self.stacked_images)
+        #     break
+
+        if self.PICKLE_INTERVAL > 0 and self.counter % self.PICKLE_INTERVAL == 0:
+            self.write_pickle(tresor, stacked_images)
+            self.reset_timer()
+
+        if self.SAVE_INTERVAL > 0 and self.counter % self.SAVE_INTERVAL == 0:
+            self.save(force_jpeg=self.INTERMEDIATE_SAVE_FORCE_JPEG)
+
+        print("counter: {0:.0f}/{1:.0f}".format(self.counter, len(self.input_images)), end="\r")
+
 
     def run(self, inp_imgs):
 
@@ -590,62 +687,14 @@ class Stacker(object):
         if self.ALIGN:
             self.translation_data = json.load(open(self.aligner.TRANSLATION_DATA, "r"))
 
+        # print(*self.input_images[0:10], sep="\n")
+
         for f in self.input_images:
-
-            self.counter += 1
-
-            if f in self.stacked_images:
-                continue
-
-            # read input as 16bit color TIFF
-            # TODO: use numpy to load the image!
-            im = cv2.imread(os.path.join(self.INPUT_DIRECTORY, f), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
-            self.stopwatch["load_image"] += self.stop_time()
-
-            if self.ALIGN:
-
-                if self.USE_CORRECTED_TRANSLATION_DATA:
-                    # translation_data[f] = ( (computed_x, computed_y), (corrected_x, corrected_y) ) 
-                    (x, y) = (self.translation_data[f][2][0], self.translation_data[f][2][1])
-                else:
-                    (x, y) = (self.translation_data[f][1][0], self.translation_data[f][1][1])
-
-                im = self.aligner.transform(im, x, y)
-                self.stopwatch["transform_image"] += self.stop_time()
-
-            # data = np.array(im, np.int) # 100ms slower per image
-            data = np.uint64(np.asarray(im, np.uint64))
-            self.stopwatch["convert_to_array"] += self.stop_time()
-
-            if not self.APPLY_CURVE:
-                self.tresor = np.add(self.tresor, data)
-
-            if self.APPLY_CURVE:
-                multiplier = self.curve[self.counter-1][3]
-                self.tresor = np.add(self.tresor, data * multiplier)
-                self.weighted_average_divider += multiplier
-
-            self.stopwatch["adding"] += self.stop_time()
-
-            if self.APPLY_PEAKING:
-                self.apply_peaking(data)
-
-            self.stacked_images.append(f)
-
-            if self.counter >= self.LIMIT:
-                if self.PICKLE_INTERVAL > 0:
-                    self.write_pickle(self.tresor, self.stacked_images)
-                break
-
-            if self.PICKLE_INTERVAL > 0 and self.counter % self.PICKLE_INTERVAL == 0:
-                self.write_pickle(tresor, stacked_images)
-                self.reset_timer()
-
-            if self.SAVE_INTERVAL > 0 and self.counter % self.SAVE_INTERVAL == 0:
-                self.save(force_jpeg=self.INTERMEDIATE_SAVE_FORCE_JPEG)
-
-            print("counter: {0:.0f}/{1:.0f}".format(self.counter, len(self.input_images)), end="\r")
-        
+            try:
+                self.process(f)
+            except Exception as e:
+                print("ERROR in image: {}".format(f))
+                raise(e)
 
         filepath = self.save(fixed_name=self.FIXED_OUTPUT_NAME)
         if self.WRITE_METADATA:
