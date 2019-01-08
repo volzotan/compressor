@@ -106,6 +106,7 @@ def get_all_file_names(input_dir):
 
 parser = argparse.ArgumentParser(description="Stack several image files to create digital long exposure photographies")
 parser.add_argument("--align", action="store_true", help="run only the aligner, do not compress")
+parser.add_argument("--transform", action="store_true", help="run only the aligner and transform, do not compress")
 args = parser.parse_args()
 
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
@@ -122,7 +123,7 @@ BASE_DIR = os.path.dirname(os.path.realpath(__file__))
 
 # init aligner
 
-if args.align:
+if args.align or args.transform:
 
     # expand all paths
     for directory in config.DIRS_TO_EXPAND_ALIGNER:
@@ -162,14 +163,19 @@ if args.align:
     aligner.SKIP_TRANSLATION                = config.SKIP_TRANSLATION
 
     aligner.init()
-    aligner.step1(input_images_aligner)
+
+    if args.align:
+        aligner.step1(input_images_aligner)
+
     # aligner.init()
-    # aligner.step2()
+
+    if args.transform:
+        aligner.step2()
 
 
 # init stacker
 
-if not args.align:
+if not args.align and not args.transform:
 
     # expand all paths
     for directory in config.DIRS_TO_EXPAND_STACKER:

@@ -3,14 +3,15 @@ EXTENSION               = None #autodetection
 # ----------------------- aligner -----------------------
 
 INPUT_DIR_ALIGNER       = "/Users/volzotan/Downloads/export_bangkok120_jpeg_unaligned"
+# INPUT_DIR_ALIGNER       = "/Users/volzotan/GIT/stacktest/Z_ZUGSPITZE/cropped"
 TRANSLATION_DATA        = "translation_data.json"
-OUTPUT_DIR_ALIGNER      = "aligned"
+OUTPUT_DIR_ALIGNER      = INPUT_DIR_ALIGNER + "_aligned"
 
 REFERENCE_IMAGE         = None #"~/Desktop/peakingtest/DSC04370.jpg"
 
 RESET_MATRIX_EVERY_LOOP = False
-DOWNSIZE                = False
-DOWNSIZE_FACTOR         = 4.0
+DOWNSIZE                = True
+DOWNSIZE_FACTOR         = 2.0
 SKIP_TRANSLATION        = -1
 
 JSON_SAVE_INTERVAL      = 100
