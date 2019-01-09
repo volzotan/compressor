@@ -45,10 +45,20 @@ class Aligner(object):
     OUTPUT_IMAGE_QUALITY            = 75    # JPEG
     USE_SOBEL                       = True
 
+    ALGORITHM                       = "ECC"
+
     # ECC Algorithm
+    # WARP_MODE                       = cv2.MOTION_TRANSLATION 
+    WARP_MODE                       = cv2.MOTION_EUCLIDEAN  
+    # WARP_MODE                       = cv2.MOTION_AFFINE 
+    # WARP_MODE                       = cv2.MOTION_HOMOGRAPHY
     NUMBER_OF_ITERATIONS            = 1000
     TERMINATION_EPS                 = 1e-6 #1e-10
-    WARP_MODE                       = cv2.MOTION_EUCLIDEAN #cv2.MOTION_TRANSLATION #cv2.MOTION_HOMOGRAPHY
+
+    # ORB Algorithm
+    WARP_MODE                       = cv2.MOTION_HOMOGRAPHY
+    MAX_FEATURES                    = 500
+    GOOD_MATCH_PERCENT              = 0.15
 
     def __init__(self):
 
@@ -79,13 +89,19 @@ class Aligner(object):
             self.reference_image = cv2.resize(self.reference_image, (0,0), fx=1.0/self.DOWNSIZE_FACTOR, fy=1.0/self.DOWNSIZE_FACTOR)
 
         self.reference_image_gray = None
-        self.reference_image_gray = cv2.cvtColor(self.reference_image,cv2.COLOR_BGR2GRAY)
+        self.reference_image_gray = cv2.cvtColor(self.reference_image, cv2.COLOR_BGR2GRAY)
         
         if self.USE_SOBEL:
             self.reference_image_gray = self._get_gradient(self.reference_image_gray)
             
-        # Define termination criteria
-        self.CRITERIA = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, self.NUMBER_OF_ITERATIONS,  self.TERMINATION_EPS)
+        if self.ALGORITHM == "ECC":
+            # Define termination criteria
+            self.CRITERIA = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, self.NUMBER_OF_ITERATIONS,  self.TERMINATION_EPS)
+
+        if self.ALGORITHM == "ORB":           
+            orb = cv2.ORB_create(self.MAX_FEATURES)
+            self.reference_image_gray = np.uint8(self.reference_image_gray) # TODO: different conversion if reference image is tiff?
+            self.orb_keypoints1, self.orb_descriptors1 = orb.detectAndCompute(self.reference_image_gray, None)
 
 
     def _get_gradient(self, im):
@@ -117,19 +133,48 @@ class Aligner(object):
         if self.USE_SOBEL:
             im2_gray = self._get_gradient(im2_gray)
 
-        # run ECC
-        try:
-            (cc, warp_matrix) = cv2.findTransformECC(self.reference_image_gray, im2_gray, warp_matrix, self.WARP_MODE, self.CRITERIA)
-        except Exception as e:
-            raise e
+        if self.ALGORITHM == "ECC":
+            try:
+                (cc, warp_matrix) = cv2.findTransformECC(self.reference_image_gray, im2_gray, warp_matrix, self.WARP_MODE, self.CRITERIA)
+            except Exception as e:
+                raise e
+
+        if self.ALGORITHM == "ORB":
+            orb = cv2.ORB_create(self.MAX_FEATURES)
+            im2_gray = np.uint8(im2_gray)
+            keypoints2, descriptors2 = orb.detectAndCompute(im2_gray, None)
+
+            # Match features.
+            matcher = cv2.DescriptorMatcher_create(cv2.DESCRIPTOR_MATCHER_BRUTEFORCE_HAMMING)
+            matches = matcher.match(self.orb_descriptors1, descriptors2, None)
+               
+            # Sort matches by score
+            matches.sort(key=lambda x: x.distance, reverse=False)
+             
+            # Remove not so good matches
+            numGoodMatches = int(len(matches) * self.GOOD_MATCH_PERCENT)
+            matches = matches[:numGoodMatches]
+             
+            # Draw top matches
+            imMatches = cv2.drawMatches(self.reference_image_gray, self.orb_keypoints1, im2_gray, keypoints2, matches, None)
+            cv2.imwrite(image + "_match.jpg", imMatches)
+               
+            # Extract location of good matches
+            points1 = np.zeros((len(matches), 2), dtype=np.float32)
+            points2 = np.zeros((len(matches), 2), dtype=np.float32)
+             
+            for i, match in enumerate(matches):
+                points1[i, :] = self.orb_keypoints1[match.queryIdx].pt
+                points2[i, :] = keypoints2[match.trainIdx].pt
+               
+            # Find homography
+            h, mask = cv2.findHomography(points1, points2, cv2.RANSAC)
+            warp_matrix = h
 
         return (im2, warp_matrix)
 
 
     def step1(self, images):
-
-        # sort images
-        images = sorted(images, key=lambda filename: os.path.splitext(os.path.basename(filename))[0])
 
         self._load_data()
 

@@ -1,4 +1,5 @@
 EXTENSION               = None #autodetection
+SORT_IMAGES             = True
 
 # ----------------------- aligner -----------------------
 
@@ -38,8 +39,7 @@ APPLY_PEAKING           = False
 PEAKING_THRESHOLD       = -1    # auto
 PEAKING_MUL_FACTOR      = 0.4
 
-WRITE_METADATA          = True            
-SORT_IMAGES             = True
+WRITE_METADATA          = True
 
 SAVE_INTERVAL           = 50
 INTERMEDIATE_SAVE_FORCE_JPEG  = False # still buggy (values to high for jpeg saving)

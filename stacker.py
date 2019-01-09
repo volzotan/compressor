@@ -15,7 +15,6 @@ import cv2
 import numpy as np
 
 from scipy.ndimage.filters import gaussian_filter
-import imageio
 
 import math
 from fractions import Fraction
@@ -95,7 +94,6 @@ class Stacker(object):
     PEAKING_GAUSSIAN_FILTER_SIZE    = 1
 
     WRITE_METADATA      = True
-    SORT_IMAGES         = True
 
     SAVE_INTERVAL       = 15
     PICKLE_INTERVAL     = -1
@@ -114,7 +112,6 @@ class Stacker(object):
     # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
     def __init__(self, aligner):
-        #data               = json.load(open("export.json", "rb"))
 
         self.aligner                    = aligner
 
@@ -462,7 +459,7 @@ class Stacker(object):
 
             # inverted_absolute_value = inverted_absolute_value - min_brightness + 1
 
-            print(inverted_absolute_value)
+            # print(inverted_absolute_value)
 
             curve[i] = (image_name, time, relative_brightness_value, 2**inverted_absolute_value, luminosity_value)
 
@@ -477,7 +474,7 @@ class Stacker(object):
         values_exif = [i[3] for i in curve]
         values_luminosity = [i[4] for i in curve]
 
-        print(values_exif)
+        # print(values_exif)
 
         plt.plot(dates, values_exif)
         # plt.plot(dates, values_luminosity)
@@ -536,30 +533,6 @@ class Stacker(object):
         self.timer = datetime.datetime.now()
 
 
-    def _sort_helper(self, value):
-
-        # still_123.jpg
-
-        if value.startswith("still_"):
-            pos = value.index(".")
-            number = value[6:pos]
-            return int(number)        
-        elif value.startswith("DSCF"):
-            pos = value.index(".")
-            number = value[4:pos]
-            return int(number)
-        elif value.startswith("DSC"):
-            pos = value.index(".")
-            number = value[3:pos]
-            return int(number)
-        else:
-            try:
-                filename = os.path.splitext(value)[0]
-                return int(filename)
-            except ValueError as e:
-                return 0
-
-
     def _plot(self, mat):
         # plot a numpy array with matplotlib
         plt.imshow(cv2.bitwise_not(cv2.cvtColor(np.asarray(mat, np.uint16), cv2.COLOR_RGB2BGR)), interpolation="nearest")
@@ -614,10 +587,10 @@ class Stacker(object):
         if f in self.stacked_images:
             return
 
-        # read input as 16bit color TIFF
-        # TODO: use numpy to load the image!
+        # read input as 16bit color TIFF or plain JPG
         image_path = os.path.join(self.INPUT_DIRECTORY, f)
-        im = cv2.imread(image_path, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
+        # no faster method found for TIF images (tested: PIL, imageio, libtiff) 
+        im = cv2.imread(image_path, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH) 
         self.stopwatch["load_image"] += self.stop_time()
 
         if self.ALIGN:
@@ -687,7 +660,7 @@ class Stacker(object):
         except Exception as e:
             print(str(e))
 
-        self.stop_time("pickle loading: {}{}")
+        self.stop_time("pickle loading: {0:.3f}{1}")
 
         self.LIMIT = len(self.input_images)
 
@@ -695,11 +668,8 @@ class Stacker(object):
             print("no images found. exit.")
             sys.exit(-1)
 
-        self.stop_time("searching for files: {}{}")
+        self.stop_time("searching for files: {0:.3f}{1}")
         print("number of images: {}".format(self.LIMIT))
-
-        if self.SORT_IMAGES:
-            self.input_images = sorted(self.input_images, key=self._sort_helper)
 
         if self.WRITE_METADATA:
             self.metadata = self.read_metadata(self.input_images)
@@ -711,7 +681,7 @@ class Stacker(object):
         self.tresor = np.zeros((self.DIMENSIONS[1], self.DIMENSIONS[0], 3), dtype=np.uint64)
         if self.APPLY_PEAKING:
             self.peaking_tresor = np.zeros((self.DIMENSIONS[1], self.DIMENSIONS[0], 3), dtype=np.uint64)
-        self.stop_time("initialization: {}{}")
+        self.stop_time("initialization: {0:.3f}{1}")
 
         # Curve
         if self.DISPLAY_CURVE or self.APPLY_CURVE:
@@ -721,7 +691,7 @@ class Stacker(object):
             #     print(item)
 
             # sys.exit(0)
-            self.stop_time("compute brightness curve: {}{}")
+            self.stop_time("compute brightness curve: {0:.3f}{1}")
 
         if self.DISPLAY_CURVE:
             self.display_curve(self.curve)

@@ -102,6 +102,30 @@ def get_all_file_names(input_dir):
     return []
 
 
+def _sort_helper(value):
+
+    # still_123.jpg
+
+    if value.startswith("still_"):
+        pos = value.index(".")
+        number = value[6:pos]
+        return int(number)        
+    elif value.startswith("DSCF"):
+        pos = value.index(".")
+        number = value[4:pos]
+        return int(number)
+    elif value.startswith("DSC"):
+        pos = value.index(".")
+        number = value[3:pos]
+        return int(number)
+    else:
+        try:
+            filename = os.path.splitext(value)[0]
+            return int(filename)
+        except ValueError as e:
+            return 0
+
+
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
 parser = argparse.ArgumentParser(description="Stack several image files to create digital long exposure photographies")
@@ -142,6 +166,9 @@ if args.align or args.transform:
         abort_if_missing(variable)
 
     input_images_aligner = get_all_file_names(config.INPUT_DIR_ALIGNER)
+
+    if config.SORT_IMAGES:
+        input_images_aligner = sorted(input_images_aligner, key=_sort_helper)
 
     if config.REFERENCE_IMAGE is None:
         if len(input_images_aligner) == 0:
@@ -195,34 +222,36 @@ if not args.align and not args.transform:
 
     input_images_stacker = get_all_file_names(config.INPUT_DIR_STACKER)
 
-    stacker.NAMING_PREFIX       = config.NAMING_PREFIX
-    stacker.INPUT_DIRECTORY     = config.INPUT_DIR_STACKER
-    stacker.RESULT_DIRECTORY    = config.OUTPUT_DIR_STACKER
+    if config.SORT_IMAGES:
+        input_images_stacker = sorted(input_images_stacker, key=_sort_helper)
+
+    stacker.NAMING_PREFIX               = config.NAMING_PREFIX
+    stacker.INPUT_DIRECTORY             = config.INPUT_DIR_STACKER
+    stacker.RESULT_DIRECTORY            = config.OUTPUT_DIR_STACKER
 
     if config.FIXED_OUTPUT_NAME.endswith(config.EXTENSION):
-        stacker.FIXED_OUTPUT_NAME   = config.FIXED_OUTPUT_NAME
+        stacker.FIXED_OUTPUT_NAME       = config.FIXED_OUTPUT_NAME
     else:
-        stacker.FIXED_OUTPUT_NAME   = config.FIXED_OUTPUT_NAME + config.EXTENSION
+        stacker.FIXED_OUTPUT_NAME       = config.FIXED_OUTPUT_NAME + config.EXTENSION
 
-    stacker.BASE_DIR            = BASE_DIR
-    stacker.EXTENSION           = config.EXTENSION
-    stacker.PICKLE_NAME         = config.PICKLE_NAME
+    stacker.BASE_DIR                    = BASE_DIR
+    stacker.EXTENSION                   = config.EXTENSION
+    stacker.PICKLE_NAME                 = config.PICKLE_NAME
 
-    stacker.ALIGN               = config.ALIGN
-    stacker.DISPLAY_CURVE       = config.DISPLAY_CURVE
-    stacker.APPLY_CURVE         = config.APPLY_CURVE
+    stacker.ALIGN                       = config.ALIGN
+    stacker.DISPLAY_CURVE               = config.DISPLAY_CURVE
+    stacker.APPLY_CURVE                 = config.APPLY_CURVE
 
-    stacker.DISPLAY_PEAKING     = config.DISPLAY_PEAKING
-    stacker.APPLY_PEAKING       = config.APPLY_PEAKING
-    stacker.PEAKING_THRESHOLD   = config.PEAKING_THRESHOLD
-    stacker.PEAKING_MUL_FACTOR  = config.PEAKING_MUL_FACTOR
+    stacker.DISPLAY_PEAKING             = config.DISPLAY_PEAKING
+    stacker.APPLY_PEAKING               = config.APPLY_PEAKING
+    stacker.PEAKING_THRESHOLD           = config.PEAKING_THRESHOLD
+    stacker.PEAKING_MUL_FACTOR          = config.PEAKING_MUL_FACTOR
 
-    stacker.WRITE_METADATA      = config.WRITE_METADATA
-    stacker.SORT_IMAGES         = config.SORT_IMAGES
+    stacker.WRITE_METADATA              = config.WRITE_METADATA
 
-    stacker.SAVE_INTERVAL       = config.SAVE_INTERVAL
+    stacker.SAVE_INTERVAL               = config.SAVE_INTERVAL
     stacker.INTERMEDIATE_SAVE_FORCE_JPEG = config.INTERMEDIATE_SAVE_FORCE_JPEG
-    stacker.PICKLE_INTERVAL     = config.PICKLE_INTERVAL
+    stacker.PICKLE_INTERVAL             = config.PICKLE_INTERVAL
 
     stacker.post_init()
     stacker.print_config()
