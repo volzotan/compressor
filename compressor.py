@@ -244,7 +244,9 @@ if not args.align and not args.transform:
 
     stacker.DISPLAY_PEAKING             = config.DISPLAY_PEAKING
     stacker.APPLY_PEAKING               = config.APPLY_PEAKING
-    stacker.PEAKING_THRESHOLD           = config.PEAKING_THRESHOLD
+    stacker.PEAKING_FROM_2ND_IMAGE      = config.PEAKING_FROM_2ND_IMAGE 
+    stacker.PEAKING_IMAGE_THRESHOLD     = config.PEAKING_IMAGE_THRESHOLD
+    stacker.PEAKING_PIXEL_THRESHOLD     = config.PEAKING_PIXEL_THRESHOLD
     stacker.PEAKING_MUL_FACTOR          = config.PEAKING_MUL_FACTOR
 
     stacker.WRITE_METADATA              = config.WRITE_METADATA

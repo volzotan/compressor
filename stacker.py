@@ -15,6 +15,7 @@ import cv2
 import numpy as np
 
 from scipy.ndimage.filters import gaussian_filter
+from skimage import color
 
 import math
 from fractions import Fraction
@@ -88,7 +89,8 @@ class Stacker(object):
 
     # Peaking
     APPLY_PEAKING                   = True
-    PEAKING_THRESHOLD               = -1
+    PEAKING_IMAGE_THRESHOLD         = None
+    PEAKING_PIXEL_THRESHOLD         = 0.95
     PEAKING_MUL_FACTOR              = 1.0
     PEAKING_BLUR                    = True
     PEAKING_GAUSSIAN_FILTER_SIZE    = 1
@@ -113,17 +115,18 @@ class Stacker(object):
 
     def __init__(self, aligner):
 
-        self.aligner                    = aligner
+        self.aligner                            = aligner
 
-        self.counter                    = 0
-        self.processed                  = 0
+        self.counter                            = 0
+        self.processed                          = 0
 
-        self.input_images               = []
-        self.stacked_images             = []
+        self.input_images                       = []
+        self.stacked_images                     = []
 
-        self.weighted_average_divider   = 0
+        self.weighted_average_divider           = 0
+        self.peaking_weighted_average_divider   = 0
 
-        self.stopwatch           = {
+        self.stopwatch                          = {
             "load_image": 0,
             "transform_image": 0,
             "convert_to_array": 0,
@@ -133,8 +136,8 @@ class Stacker(object):
             "write_image": 0
         }
 
-        self.tresor = None
-        self.peaking_tresor = None
+        self.tresor                             = None
+        self.peaking_tresor                     = None
 
 
     """
@@ -148,8 +151,8 @@ class Stacker(object):
         if self.CLIPPING_VALUE < 0 and self.EXTENSION == ".tif":
             self.CLIPPING_VALUE = 2**16 - 1
 
-        if self.PEAKING_THRESHOLD < 0:
-            self.PEAKING_THRESHOLD = self.CLIPPING_VALUE - (self.CLIPPING_VALUE / 50.0) # peaking above 97.5%
+        # TODO: is ignored right now
+        # self.PEAKING_THRESHOLD = int(self.CLIPPING_VALUE * self.PEAKING_PIXEL_THRESHOLD) # peaking includes pixel above 95% brightness
 
     # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
@@ -234,28 +237,43 @@ class Stacker(object):
             if self.DEBUG:
                 print("saving: max value before peaking in image: {}".format(np.amax(t)))
 
-            # clip to max value
-            peaked = np.clip(self.peaking_tresor, 0, self.CLIPPING_VALUE)
+            # # clip to max value
+            # peaked = np.clip(self.peaking_tresor, 0, self.CLIPPING_VALUE)
 
-            # blur the result to avoid sharp edges
-            if self.PEAKING_BLUR:
-                peaked = gaussian_filter(peaked, sigma=self.PEAKING_GAUSSIAN_FILTER_SIZE)
+            # # blur the result to avoid sharp edges
+            # if self.PEAKING_BLUR:
+            #     peaked = gaussian_filter(peaked, sigma=self.PEAKING_GAUSSIAN_FILTER_SIZE)
 
-            peaked = np.asarray(peaked * self.PEAKING_MUL_FACTOR, np.uint64)
+            # peaked = np.asarray(peaked * self.PEAKING_MUL_FACTOR, np.uint64)
 
-            t = np.add(t, peaked)
+            # peaked = self.peaking_tresor.copy()
 
-            s = np.asarray(peaked, np.uint16)
+            # if self.APPLY_CURVE:
+            #     peaked = peaked / (self.peaking_weighted_average_divider)
+            # else:
+            #     peaked = peaked / (self.counter)
+
+            # s = np.asarray(peaked, np.uint16)
+            # cv2.imwrite(filepath + ".peaking.jpg", s)
+
+            p = self.peaking_tresor.copy()
+            if (p.max() > 1): 
+                p = p / (p.max() * 0.5)  # TODO?
+                p = p * self.CLIPPING_VALUE
+                p = np.clip(p, 0, self.CLIPPING_VALUE)
+            s = np.asarray(p, np.uint16)
             cv2.imwrite(filepath + ".peaking.jpg", s)
 
-        if self.DEBUG:
-            print("saving: max value in image: {}".format(np.amax(t)))
+            t = np.add(t, p * self.PEAKING_MUL_FACTOR)
 
-        # TODO: check for any overflows of single pixels
-        # e.g.: through peaking for example some pixels may be brighter than allows.
-        #       those need to be capped
+            if self.DEBUG:
+                print("saving: max value in image: {}".format(np.amax(t)))
 
-        t = np.clip(t, 0, self.CLIPPING_VALUE)
+            # TODO: check for any overflows of single pixels
+            # e.g.: through peaking for example some pixels may be brighter than allows.
+            #       those need to be capped
+
+            t = np.clip(t, 0, self.CLIPPING_VALUE)
 
         # convert to uint16 for saving, 0.5s faster than usage of t.astype(np.uint16)
         s = np.asarray(t, np.uint16)
@@ -394,7 +412,7 @@ class Stacker(object):
 
 
     def calculate_brightness_curve(self, images):
-        curve = []
+        values = []
 
         for image in images:
             metadata = GExiv2.Metadata()
@@ -433,27 +451,29 @@ class Stacker(object):
                 # no aperture tag set, probably an lens adapter was used. assume fixed aperture.
                 aperture = None
 
-            curve.append((image, time, self._intensity(shutter, aperture, iso), self._luminosity(image)))
+            values.append((image, time, self._intensity(shutter, aperture, iso), self._luminosity(image)))
 
         # normalize
-        values = [x[2] for x in curve]
+        intensities = [x[2] for x in values]
 
-        min_brightness = min(values)
-        max_brightness = max(values)
+        min_intensity = min(intensities)
+        max_intensity = max(intensities)
 
-        for i in range(0, len(curve)):
+        curve = []
+
+        for i in range(0, len(values)):
             # range 0 to 1, because we have to invert the camera values to derive the brightness
             # value of the camera environment
 
-            image_name                  = curve[i][0]
-            time                        = curve[i][1]
-            relative_brightness_value   = np.interp(curve[i][2], [min_brightness, max_brightness], [1, 0]) # range [0;1]
-            inverted_absolute_value     = np.interp(curve[i][2], [min_brightness, max_brightness], [max_brightness, min_brightness])
-            luminosity_value            = curve[i][3]
+            image_name                  = values[i][0]
+            time                        = values[i][1]
+            relative_brightness_value   = np.interp(values[i][2], [min_intensity, max_intensity], [1, 0]) # range [0;1]
+            inverted_absolute_value     = np.interp(values[i][2], [min_intensity, max_intensity], [max_intensity, min_intensity])
+            luminosity_value            = values[i][3]
 
             # right now the inverted absolute brightness, which is used for the weighted curve calculation,
             # is quite a large number. Usually around 20. (but every image is multiplied with it's respective value,
-            # resulting in enourmous numbers in the tresor matrix)
+            # resulting in enormous numbers in the tresor matrix)
             #
             # better: value - min_brightness + 1 (result should never actually be zero)
 
@@ -461,22 +481,30 @@ class Stacker(object):
 
             # print(inverted_absolute_value)
 
-            curve[i] = (image_name, time, relative_brightness_value, 2**inverted_absolute_value, luminosity_value)
+            curve.append({
+                "image_name": image_name, 
+                "time": time, 
+                "brightness": values[i][2],                         # measure how much light the camera needed to block (lower means scene was brighter)
+                "relative_brightness": relative_brightness_value,   # relative inverted brightness (0: darkest scene, 1: brightest scene)
+                "inverted_absolute": 2**inverted_absolute_value,    # absolute inverted brightness (min: darkest scene, max: brightest scene)
+                "luminosity": luminosity_value                      # 
+            })
 
-        values = [x[2] for x in curve]
-        self.curve_avg = sum(values) / float(len(values))
+        relative_brightnesses = [x["relative_brightness"] for x in curve]
+        self.curve_avg = sum(relative_brightnesses) / float(len(relative_brightnesses))
 
         return curve
 
 
     def display_curve(self, curve):
-        dates = [i[1] for i in curve]
-        values_exif = [i[3] for i in curve]
-        values_luminosity = [i[4] for i in curve]
+        dates = [i["time"] for i in curve]
+        values_exif = [i["inverted_absolute"] for i in curve]
+        values_luminosity = [i["luminosity"] for i in curve]
 
         # print(values_exif)
 
         plt.plot(dates, values_exif)
+        plt.plot(dates, values_luminosity)
         # plt.plot(dates, values_luminosity)
         plt.savefig(os.path.join(self.RESULT_DIRECTORY, "curveplot.png"))
         # plt.show()
@@ -484,17 +512,82 @@ class Stacker(object):
 
     def apply_peaking(self, data):
 
-        datacopy = data.copy()
+        # TODO: beware modifies original image data! (but is faster than copying)
+        datacopy = data #data.copy()
 
-        # calculate boolean mask for every color channel
-        mask_rgb = data > self.PEAKING_THRESHOLD
+        # # Method 1:
+        # # calculate boolean mask for every color channel separately
+        # # combine single color channel masks via AND
+        # # all three channels must be > PEAKING_THRESHOLD
+        # mask_rgb = data > self.PEAKING_THRESHOLD
+        # mask = np.logical_and(mask_rgb[:,:,0], mask_rgb[:,:,1], mask_rgb[:,:,2])
 
-        # combine mask via AND
-        # all three channels must be > PEAKING_THRESHOLD
-        mask_all_channels = np.logical_and(mask_rgb[:,:,0], mask_rgb[:,:,1], mask_rgb[:,:,2])
+        # # Method 2:
+        # # if the average of RGB value of an pixel is above the threshold 
+        # mask_rgb = np.mean(datacopy, axis=2) > self.PEAKING_THRESHOLD
+        # mask = mask_rgb
 
-        # invert mask and set everything to 0 if not all three channels are > threshold
-        datacopy[~mask_all_channels] = 0
+        # # improve the mask
+        # kernel = np.ones((5,5), np.uint8)
+        # mask = np.asarray(mask, np.uint8)
+        # mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        # mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        # mask = mask.astype(bool)
+ 
+        # # invert mask and set everything to 0 if condition is not met
+        # datacopy[~mask] = 0
+
+        # data_mean = np.mean(datacopy, axis=2)
+        # mask_below = data_mean < int(self.CLIPPING_VALUE * 0.6)
+        # mask_above = data_mean > int(self.CLIPPING_VALUE * 0.9)
+        # mask_between = np.logical_and(~mask_below, ~mask_above)
+
+        # datacopy[mask_below] = 0
+        # print(datacopy.shape)
+        # datacopy = np.subtract(datacopy[mask_between], int(self.CLIPPING_VALUE * 0.6))
+        # datacopy.reshape()
+        # print(datacopy.shape)
+        # # datacopy[mask_between] -= int(self.CLIPPING_VALUE * 0.6)
+        # # datacopy = np.multiply(datacopy[mask_between], int(self.CLIPPING_VALUE * 0.9) / int(self.CLIPPING_VALUE * 0.6))
+        # datacopy[mask_above] = 0
+
+
+
+        # Convert to HSV to get a value for the brightness of single pixels
+        # (using the avg. RGB value results in nasty problems with color channels 
+        # when tinkering with the brightness)
+
+        hsv_im = color.rgb2hsv(datacopy)
+
+        a = 0.80
+        b = 0.98 # maybe too low?
+
+        mask_below = hsv_im[:, :, 2] < a
+
+        mask_above = hsv_im[:, :, 2] > b
+        # improve the mask for the bright areas a bit
+        kernel = np.ones((5,5), np.uint8)
+        mask_above = np.asarray(mask_above, np.uint8)
+        mask_above = cv2.morphologyEx(mask_above, cv2.MORPH_OPEN, kernel)
+        mask_above = cv2.morphologyEx(mask_above, cv2.MORPH_CLOSE, kernel)
+        mask_above = mask_above.astype(bool)
+
+        mask_between = np.logical_and(~mask_below, ~mask_above)
+
+        # cut off all dark areas
+        hsv_im[mask_below] = 0
+
+        # adjust range from 0 -- a - b -- 1 to 0 - b -- 1 
+        # for medium bright areas
+        hsv_im[mask_between, 2] -= a
+        hsv_im[mask_between, 2] *= (1/(b - a))
+        hsv_im[mask_between, 2] *= b
+
+        datacopy = color.hsv2rgb(hsv_im) * self.CLIPPING_VALUE
+
+        s = np.asarray(datacopy, np.uint16)
+        cv2.imwrite("narf" + ".peaking.jpg", s)
+        sys.exit()
 
         # TODO: improvement:
         # right now the whole image (data) gets copied, certain parts are nulled and everything will
@@ -502,7 +595,7 @@ class Stacker(object):
 
         if self.DISPLAY_PEAKING:
            
-            #plt.imshow(~mask_all_channels, cmap="Greys", vmin=0, vmax=1)
+            #plt.imshow(~mask, cmap="Greys", vmin=0, vmax=1)
 
             s = np.asarray(datacopy, np.uint16)
             cv2.imwrite(os.path.join(self.RESULT_DIRECTORY, "peaking.jpg"), s)
@@ -513,7 +606,26 @@ class Stacker(object):
             # plt.show()
             sys.exit(0)
 
+
+        # if not self.APPLY_CURVE:
+        #     self.peaking_tresor = np.add(self.peaking_tresor, datacopy)
+
+        # if self.APPLY_CURVE:
+        #     multiplier = self.curve[self.counter-1]["inverted_absolute"]
+        #     self.peaking_tresor = np.add(self.peaking_tresor, datacopy * multiplier)
+        #     self.peaking_weighted_average_divider += multiplier
+
         self.peaking_tresor = np.add(self.peaking_tresor, datacopy)
+
+
+    def _load_image(self, filename, directory=None):
+        # read input as 16bit color TIFF or plain JPG
+        if directory is not None:
+            image_path = os.path.join(directory, filename)
+        else:
+            image_path = filename
+        # no faster method found for TIF images (tested: PIL, imageio, libtiff) 
+        return cv2.imread(image_path, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH) 
 
 
     def stop_time(self, msg=None):
@@ -559,7 +671,7 @@ class Stacker(object):
         status += "saving image: {:.1f} | ".format(          save_time) 
         status += "time per image: {:.1f} | ".format(        timeperimage)
         status += "est. remaining: {:.1f} || ".format(       est_remaining)
-        status += support.Converter().humanReadableSeconds( est_remaining)
+        status += support.Converter().humanReadableSeconds(  est_remaining)
         
         text =  "load_image: {load_image:.3f} | "
         text += "transform_image: {transform_image:.3f} | "
@@ -587,21 +699,12 @@ class Stacker(object):
         if f in self.stacked_images:
             return
 
-        # read input as 16bit color TIFF or plain JPG
-        image_path = os.path.join(self.INPUT_DIRECTORY, f)
-        # no faster method found for TIF images (tested: PIL, imageio, libtiff) 
-        im = cv2.imread(image_path, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH) 
+        im = self._load_image(f, directory=self.INPUT_DIRECTORY)
         self.stopwatch["load_image"] += self.stop_time()
 
         if self.ALIGN:
-
-            if self.USE_CORRECTED_TRANSLATION_DATA:
-                # translation_data[f] = ( (computed_x, computed_y), (corrected_x, corrected_y) ) 
-                (x, y) = (self.translation_data[f][2][0], self.translation_data[f][2][1])
-            else:
-                (x, y) = (self.translation_data[f][1][0], self.translation_data[f][1][1])
-
-            im = self.aligner.transform(im, x, y)
+            # translation_data[f] = ( matrix, (computed_x, computed_y), (corrected_x, corrected_y) ) 
+            im = self.aligner.transform(im, np.matrix(self.translation_data[f][0]), im.shape)
             self.stopwatch["transform_image"] += self.stop_time()
 
         # data = np.array(im, np.int) # 100ms slower per image
@@ -612,14 +715,30 @@ class Stacker(object):
             self.tresor = np.add(self.tresor, data)
 
         if self.APPLY_CURVE:
-            multiplier = self.curve[self.counter-1][3]
+            multiplier = self.curve[self.counter-1]["inverted_absolute"]
+            print(multiplier)
             self.tresor = np.add(self.tresor, data * multiplier)
             self.weighted_average_divider += multiplier
 
         self.stopwatch["adding"] += self.stop_time()
 
         if self.APPLY_PEAKING:
-            self.apply_peaking(data)
+            image_brightness = self.curve[self.counter-1]["brightness"]
+            if self.PEAKING_IMAGE_THRESHOLD is None or self.PEAKING_IMAGE_THRESHOLD > image_brightness:
+                if self.PEAKING_FROM_2ND_IMAGE:
+                    second_image_data = self._load_image(f, directory=os.path.join(self.INPUT_DIRECTORY, "2nd"))
+                    if second_image_data is not None:
+
+                        if self.ALIGN:
+                            second_image_data = self.aligner.transform(second_image_data, np.matrix(self.translation_data[f][0]), second_image_data.shape)
+
+                        self.apply_peaking(second_image_data)
+                    else:
+                        print("2ND IMAGE MISSING {}".format(f))
+                else:
+                    self.apply_peaking(data)
+            # else: 
+            #     print("image {} skipped for peaking due to threshold ({})".format(f, image_brightness))
             self.stopwatch["peaking"] += self.stop_time()
 
         self.stacked_images.append(f)
@@ -647,6 +766,8 @@ class Stacker(object):
     def run(self, inp_imgs):
 
         self.input_images = inp_imgs
+
+        # self.input_images = self.input_images[289:]
 
         self.starttime = datetime.datetime.now()
         self.timer = datetime.datetime.now()
@@ -679,8 +800,10 @@ class Stacker(object):
             self.DIMENSIONS = (shape[1], shape[0])
 
         self.tresor = np.zeros((self.DIMENSIONS[1], self.DIMENSIONS[0], 3), dtype=np.uint64)
+
         if self.APPLY_PEAKING:
             self.peaking_tresor = np.zeros((self.DIMENSIONS[1], self.DIMENSIONS[0], 3), dtype=np.uint64)
+        
         self.stop_time("initialization: {0:.3f}{1}")
 
         # Curve
@@ -698,6 +821,11 @@ class Stacker(object):
 
         if self.ALIGN:
             self.translation_data = json.load(open(self.aligner.TRANSLATION_DATA, "r"))
+
+        # for item in self.curve:
+        #     print("{0:20s} | brightness: {1:>3.1f} | luminosity: {2:>3.1f}".format(item["image_name"], item["brightness"], item["luminosity"]))
+
+        # sys.exit(0)
 
         # print(*self.input_images[0:10], sep="\n")
 

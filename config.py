@@ -11,7 +11,7 @@ OUTPUT_DIR_ALIGNER      = INPUT_DIR_ALIGNER + "_aligned"
 REFERENCE_IMAGE         = None #"~/Desktop/peakingtest/DSC04370.jpg"
 
 RESET_MATRIX_EVERY_LOOP = False
-DOWNSIZE                = True
+DOWNSIZE                = False
 DOWNSIZE_FACTOR         = 2.0
 SKIP_TRANSLATION        = -1
 
@@ -26,22 +26,25 @@ JSON_SAVE_INTERVAL      = 100
 # PICKLE_NAME             = "stack.pickle"
 
 NAMING_PREFIX           = ""
-INPUT_DIR_STACKER       = "/Users/volzotan/Downloads/export_hongkong4"
-OUTPUT_DIR_STACKER      = INPUT_DIR_STACKER + "_stacked" # "/Users/volzotan/Documents/DESPATDATASETS/stack"
+INPUT_DIR_STACKER       = "/Users/volzotan/Downloads/export_bangkok120_jpeg_unaligned"
+# INPUT_DIR_STACKER       = "/Volumes/ctdrive/export_hongkong4"
+OUTPUT_DIR_STACKER      = INPUT_DIR_STACKER + "_peak" # "/Users/volzotan/Documents/DESPATDATASETS/stack"
 FIXED_OUTPUT_NAME       = "output"
 PICKLE_NAME             = "stack.pickle"
 
-ALIGN                   = False
+ALIGN                   = True
 
 APPLY_CURVE             = True
 
-APPLY_PEAKING           = False
-PEAKING_THRESHOLD       = -1    # auto
-PEAKING_MUL_FACTOR      = 0.4
+APPLY_PEAKING           = True
+PEAKING_FROM_2ND_IMAGE  = True 
+PEAKING_IMAGE_THRESHOLD = 10
+PEAKING_PIXEL_THRESHOLD = None # is ignored right now
+PEAKING_MUL_FACTOR      = 0.3
 
 WRITE_METADATA          = True
 
-SAVE_INTERVAL           = 50
+SAVE_INTERVAL           = 10
 INTERMEDIATE_SAVE_FORCE_JPEG  = False # still buggy (values to high for jpeg saving)
 PICKLE_INTERVAL         = -1
 
