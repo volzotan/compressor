@@ -49,16 +49,16 @@ class Aligner(object):
 
     # ECC Algorithm
     # WARP_MODE                       = cv2.MOTION_TRANSLATION 
-    WARP_MODE                       = cv2.MOTION_EUCLIDEAN  
+    # WARP_MODE                       = cv2.MOTION_EUCLIDEAN  
     # WARP_MODE                       = cv2.MOTION_AFFINE 
-    # WARP_MODE                       = cv2.MOTION_HOMOGRAPHY
+    WARP_MODE                       = cv2.MOTION_HOMOGRAPHY
     NUMBER_OF_ITERATIONS            = 1000
     TERMINATION_EPS                 = 1e-6 #1e-10
 
     # ORB Algorithm
-    WARP_MODE                       = cv2.MOTION_HOMOGRAPHY
-    MAX_FEATURES                    = 500
-    GOOD_MATCH_PERCENT              = 0.15
+    # WARP_MODE                       = cv2.MOTION_HOMOGRAPHY
+    # MAX_FEATURES                    = 500
+    # GOOD_MATCH_PERCENT              = 0.15
 
     def __init__(self):
 
@@ -319,12 +319,7 @@ class Aligner(object):
             timer_start = datetime.datetime.now()
 
             im2 = self._read_image_and_crop(source_file)
-
-            # TODO: rather use warpAffine?
-
-            im2_aligned = self.transform(im2, matrix)
-
-            # Write final results
+            im2_aligned = self.transform(im2, matrix, self.sz)
             cv2.imwrite(destination_file, im2_aligned, [int(cv2.IMWRITE_JPEG_QUALITY), self.OUTPUT_IMAGE_QUALITY])
 
             timediff_align = datetime.datetime.now() - timer_start
@@ -336,19 +331,14 @@ class Aligner(object):
             print(OUTPUT_STR.format(image, self.counter, len(images), self.skipped, self.success, self.failed, self.outlier, timediff_align.total_seconds()))
 
 
-    def transform(self, image_object, mat, write=True):
-        warp_matrix       = self._create_warp_matrix()
-
-        # print(x)
-
-        warp_matrix = mat
+    def transform(self, image_object, warp_matrix, size):
 
         if self.WARP_MODE == cv2.MOTION_HOMOGRAPHY :
             # Use warpPerspective for Homography 
-            im2_aligned = cv2.warpPerspective(image_object, warp_matrix, (self.sz[1],self.sz[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
+            im2_aligned = cv2.warpPerspective(image_object, warp_matrix, (size[1], size[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
         else :
             # Use warpAffine for Translation, Euclidean and Affine
-            im2_aligned = cv2.warpAffine(image_object, warp_matrix, (self.sz[1],self.sz[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
+            im2_aligned = cv2.warpAffine(image_object, warp_matrix, (size[1], size[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
         
         return im2_aligned
 
