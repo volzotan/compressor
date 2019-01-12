@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from aligner import Aligner
+from stitcher import Stitcher
 from stacker import Stacker
 
 import argparse
@@ -131,13 +132,16 @@ def _sort_helper(value):
 parser = argparse.ArgumentParser(description="Stack several image files to create digital long exposure photographies")
 parser.add_argument("--align", action="store_true", help="run only the aligner, do not compress")
 parser.add_argument("--transform", action="store_true", help="run only the aligner and transform, do not compress")
+parser.add_argument("--stitch", action="store_true", help="stitch images for panoramic formats")
 args = parser.parse_args()
 
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
 aligner = Aligner()
+stitcher = Stitcher()
 stacker = Stacker(aligner)
 input_images_aligner = []
+input_images_stitcher = []
 input_images_stacker = []
 
 # transform to absolute paths
@@ -199,10 +203,21 @@ if args.align or args.transform:
     if args.transform:
         aligner.step2()
 
+# init stitcher
+
+if args.stitch:
+
+    stitcher.INPUT_DIR                      = config.INPUT_DIR_STITCHER
+    stitcher.OUTPUT_DIR                     = config.OUTPUT_DIR_STITCHER
+
+    input_images_stitcher = [["stitcher_test/01.jpg", "stitcher_test/02.jpg"]]
+
+    stitcher.init()
+    stitcher.run(input_images_stitcher)
 
 # init stacker
 
-if not args.align and not args.transform:
+if not args.align and not args.transform and not args.stitch:
 
     # expand all paths
     for directory in config.DIRS_TO_EXPAND_STACKER:
@@ -244,8 +259,10 @@ if not args.align and not args.transform:
 
     stacker.DISPLAY_PEAKING             = config.DISPLAY_PEAKING
     stacker.APPLY_PEAKING               = config.APPLY_PEAKING
+    stacker.PEAKING_STRATEGY            = config.PEAKING_STRATEGY
     stacker.PEAKING_FROM_2ND_IMAGE      = config.PEAKING_FROM_2ND_IMAGE 
     stacker.PEAKING_IMAGE_THRESHOLD     = config.PEAKING_IMAGE_THRESHOLD
+    stacker.PEAKING_BLEND               = config.PEAKING_BLEND
     stacker.PEAKING_PIXEL_THRESHOLD     = config.PEAKING_PIXEL_THRESHOLD
     stacker.PEAKING_MUL_FACTOR          = config.PEAKING_MUL_FACTOR
 

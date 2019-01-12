@@ -89,11 +89,15 @@ class Stacker(object):
 
     # Peaking
     APPLY_PEAKING                   = True
+    PEAKING_STRATEGY                = "lighten"
+    PEAKING_FROM_2ND_IMAGE          = False
     PEAKING_IMAGE_THRESHOLD         = None
-    PEAKING_PIXEL_THRESHOLD         = 0.95
-    PEAKING_MUL_FACTOR              = 1.0
-    PEAKING_BLUR                    = True
-    PEAKING_GAUSSIAN_FILTER_SIZE    = 1
+    PEAKING_BLEND                   = True
+
+    # PEAKING_PIXEL_THRESHOLD         = 0.95
+    # PEAKING_MUL_FACTOR              = 1.0
+    # PEAKING_BLUR                    = True
+    # PEAKING_GAUSSIAN_FILTER_SIZE    = 1
 
     WRITE_METADATA      = True
 
@@ -234,8 +238,8 @@ class Stacker(object):
 
             """
 
-            if self.DEBUG:
-                print("saving: max value before peaking in image: {}".format(np.amax(t)))
+            # if self.DEBUG:
+            #     print("saving: max value before peaking in image: {}".format(np.amax(t)))
 
             # # clip to max value
             # peaked = np.clip(self.peaking_tresor, 0, self.CLIPPING_VALUE)
@@ -256,15 +260,18 @@ class Stacker(object):
             # s = np.asarray(peaked, np.uint16)
             # cv2.imwrite(filepath + ".peaking.jpg", s)
 
-            p = self.peaking_tresor.copy()
-            if (p.max() > 1): 
-                p = p / (p.max() * 0.5)  # TODO?
-                p = p * self.CLIPPING_VALUE
-                p = np.clip(p, 0, self.CLIPPING_VALUE)
-            s = np.asarray(p, np.uint16)
-            cv2.imwrite(filepath + ".peaking.jpg", s)
+            if PEAKING_STRATEGY == "lighten":
+                
+                p = self.peaking_tresor.copy()
+                if (p.max() > 1): 
+                    # p = p / (p.max() * 0.5)  # TODO?
+                    # p = p * self.CLIPPING_VALUE
+                    p = np.clip(p, 0, self.CLIPPING_VALUE)
+                s = np.asarray(p, np.uint16)
+                cv2.imwrite(filepath + ".peaking.jpg", s)
 
-            t = np.add(t, p * self.PEAKING_MUL_FACTOR)
+                if self.PEAKING_BLEND:
+                    t = np.add(t, p * self.PEAKING_MUL_FACTOR)
 
             if self.DEBUG:
                 print("saving: max value in image: {}".format(np.amax(t)))
@@ -515,12 +522,16 @@ class Stacker(object):
         # TODO: beware modifies original image data! (but is faster than copying)
         datacopy = data #data.copy()
 
+        # ------------------------------------------------------------------------------------------------------------------------
+
         # # Method 1:
         # # calculate boolean mask for every color channel separately
         # # combine single color channel masks via AND
         # # all three channels must be > PEAKING_THRESHOLD
         # mask_rgb = data > self.PEAKING_THRESHOLD
         # mask = np.logical_and(mask_rgb[:,:,0], mask_rgb[:,:,1], mask_rgb[:,:,2])
+
+        # ------------------------------------------------------------------------------------------------------------------------
 
         # # Method 2:
         # # if the average of RGB value of an pixel is above the threshold 
@@ -551,47 +562,61 @@ class Stacker(object):
         # # datacopy = np.multiply(datacopy[mask_between], int(self.CLIPPING_VALUE * 0.9) / int(self.CLIPPING_VALUE * 0.6))
         # datacopy[mask_above] = 0
 
+        # ------------------------------------------------------------------------------------------------------------------------
 
-
+        # Method 3:
         # Convert to HSV to get a value for the brightness of single pixels
         # (using the avg. RGB value results in nasty problems with color channels 
         # when tinkering with the brightness)
 
-        hsv_im = color.rgb2hsv(datacopy)
+        # hsv_im = color.rgb2hsv(datacopy)
 
-        a = 0.80
-        b = 0.98 # maybe too low?
+        # a = 0.80
+        # b = 0.98 # maybe too low?
 
-        mask_below = hsv_im[:, :, 2] < a
+        # mask_below = hsv_im[:, :, 2] < a
 
-        mask_above = hsv_im[:, :, 2] > b
-        # improve the mask for the bright areas a bit
-        kernel = np.ones((5,5), np.uint8)
-        mask_above = np.asarray(mask_above, np.uint8)
-        mask_above = cv2.morphologyEx(mask_above, cv2.MORPH_OPEN, kernel)
-        mask_above = cv2.morphologyEx(mask_above, cv2.MORPH_CLOSE, kernel)
-        mask_above = mask_above.astype(bool)
+        # mask_above = hsv_im[:, :, 2] > b
+        # # improve the mask for the bright areas a bit
+        # kernel = np.ones((5,5), np.uint8)
+        # mask_above = np.asarray(mask_above, np.uint8)
+        # mask_above = cv2.morphologyEx(mask_above, cv2.MORPH_OPEN, kernel)
+        # mask_above = cv2.morphologyEx(mask_above, cv2.MORPH_CLOSE, kernel)
+        # mask_above = mask_above.astype(bool)
 
-        mask_between = np.logical_and(~mask_below, ~mask_above)
+        # mask_between = np.logical_and(~mask_below, ~mask_above)
 
-        # cut off all dark areas
-        hsv_im[mask_below] = 0
+        # # cut off all dark areas
+        # hsv_im[mask_below] = 0
 
-        # adjust range from 0 -- a - b -- 1 to 0 - b -- 1 
-        # for medium bright areas
-        hsv_im[mask_between, 2] -= a
-        hsv_im[mask_between, 2] *= (1/(b - a))
-        hsv_im[mask_between, 2] *= b
+        # # adjust range from 0 -- a - b -- 1 to 0 - b -- 1 
+        # # for medium bright areas
+        # hsv_im[mask_between, 2] -= a
+        # hsv_im[mask_between, 2] *= (1/(b - a))
+        # hsv_im[mask_between, 2] *= b
 
-        datacopy = color.hsv2rgb(hsv_im) * self.CLIPPING_VALUE
+        # datacopy = color.hsv2rgb(hsv_im) * self.CLIPPING_VALUE
 
-        s = np.asarray(datacopy, np.uint16)
-        cv2.imwrite("narf" + ".peaking.jpg", s)
-        sys.exit()
+        # ------------------------------------------------------------------------------------------------------------------------
 
-        # TODO: improvement:
-        # right now the whole image (data) gets copied, certain parts are nulled and everything will
-        # be added to peaking_tresor. Better: just add the non masked parts from the original data ndarray.
+        # Method 4:
+        # Act like Photoshops Lighten layer blend mode
+        # Replace (for each RGB channel separately) every pixel which is brighter in the following images
+
+        if PEAKING_STRATEGY == "lighten":
+
+            brighter_mask = self.peaking_tresor < datacopy 
+            self.peaking_tresor[brighter_mask] = datacopy[brighter_mask]
+
+        # ------------------------------------------------------------------------------------------------------------------------
+
+        # if not np.array_equal(datacopy, self.peaking_tresor):
+        #     s = np.asarray(self.peaking_tresor, np.uint16)
+        #     # s = np.asarray(s, np.uint16)
+        #     # s *= self.CLIPPING_VALUE
+        #     print(s)
+        #     cv2.imwrite("narf" + ".peaking.jpg", s)
+        #     sys.exit()
 
         if self.DISPLAY_PEAKING:
            
@@ -615,7 +640,7 @@ class Stacker(object):
         #     self.peaking_tresor = np.add(self.peaking_tresor, datacopy * multiplier)
         #     self.peaking_weighted_average_divider += multiplier
 
-        self.peaking_tresor = np.add(self.peaking_tresor, datacopy)
+        # self.peaking_tresor = np.add(self.peaking_tresor, datacopy)
 
 
     def _load_image(self, filename, directory=None):
@@ -768,6 +793,12 @@ class Stacker(object):
         self.input_images = inp_imgs
 
         # self.input_images = self.input_images[289:]
+
+        # print shutter intervals to check for deviations
+        # for i in range(1, len(self.input_images)):
+        #     old = int(self.input_images[i-1][:-6])/1000
+        #     new = int(self.input_images[i][:-6])/1000
+        #     print("{0:3.1f}".format((new-old)/60))
 
         self.starttime = datetime.datetime.now()
         self.timer = datetime.datetime.now()
