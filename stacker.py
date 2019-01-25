@@ -260,7 +260,7 @@ class Stacker(object):
             # s = np.asarray(peaked, np.uint16)
             # cv2.imwrite(filepath + ".peaking.jpg", s)
 
-            if PEAKING_STRATEGY == "lighten":
+            if self.PEAKING_STRATEGY == "lighten":
                 
                 p = self.peaking_tresor.copy()
                 if (p.max() > 1): 
@@ -603,7 +603,7 @@ class Stacker(object):
         # Act like Photoshops Lighten layer blend mode
         # Replace (for each RGB channel separately) every pixel which is brighter in the following images
 
-        if PEAKING_STRATEGY == "lighten":
+        if self.PEAKING_STRATEGY == "lighten":
 
             brighter_mask = self.peaking_tresor < datacopy 
             self.peaking_tresor[brighter_mask] = datacopy[brighter_mask]

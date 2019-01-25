@@ -119,6 +119,10 @@ def _sort_helper(value):
         pos = value.index(".")
         number = value[3:pos]
         return int(number)
+    elif value.startswith("DJI_"):
+        pos = value.index(".")
+        number = value[4:pos]
+        return int(number)
     else:
         try:
             filename = os.path.splitext(value)[0]
@@ -210,7 +214,7 @@ if args.stitch:
     stitcher.INPUT_DIR                      = config.INPUT_DIR_STITCHER
     stitcher.OUTPUT_DIR                     = config.OUTPUT_DIR_STITCHER
 
-    input_images_stitcher = [["stitcher_test/01.jpg", "stitcher_test/02.jpg"]]
+    input_images_stitcher = [["stitcher_test/1.jpg", "stitcher_test/2.jpg"]]
 
     stitcher.init()
     stitcher.run(input_images_stitcher)

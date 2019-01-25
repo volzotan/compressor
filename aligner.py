@@ -6,6 +6,8 @@ import json
 import traceback
 import subprocess
 
+import matplotlib as mpl
+mpl.use('Agg') # allows plotting with empty DISPLAY variable
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
