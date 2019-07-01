@@ -1,7 +1,8 @@
 import os
 import shutil
+from datetime import datetime
 
-INPUT_FOLDER    = "/Users/volzotan/Downloads/despat/despat"
+INPUT_FOLDER    = "/Users/volzotan/Downloads/despat_download/despat"
 OUTPUT_FOLDER   = os.path.join(INPUT_FOLDER, "2nd")
 
 EXTENSION = ".jpg"
@@ -33,6 +34,10 @@ def _sort_helper(d):
         pos = value.index(".")
         number = value[4:pos]
         return int(number)
+    elif "_" in value:
+        pos = value.index("_")
+        number = value[0:pos]
+        return int(number)
     else:
         try:
             filename = os.path.splitext(value)[0]
@@ -52,7 +57,11 @@ for f in os.listdir(INPUT_FOLDER):
     if f.lower().endswith(EXTENSION):
         images.append((INPUT_FOLDER, f))
 
-# print(images)
+if len(images) < 2:
+    print("found {} images. abort.".format(len(images)))
+    exit()
+else:
+    print("found {} images in total.".format(len(images)))
 
 if not os.path.exists(OUTPUT_FOLDER):
     os.makedirs(OUTPUT_FOLDER)
@@ -60,11 +69,18 @@ if not os.path.exists(OUTPUT_FOLDER):
 
 images = sorted(images, key=_sort_helper)
 
+# for img in images:
+#     print(img[1])
+# exit()
+
 prev = None
 for img in images:
     timestamp = os.path.splitext(img[1])[0]
-    timestamp = timestamp[:timestamp.rfind("_")]
+    if "_" in timestamp:
+        timestamp = timestamp[0:timestamp.rfind("_")]
     timestamp = int(timestamp)
+
+    # print(timestamp)
 
     if prev is not None:
         diff = timestamp - prev[0]
@@ -74,6 +90,8 @@ for img in images:
 
     prev = (timestamp, img)
 
+
+print("found {} double exposure images.".format(len(double_exposure_images)))
 
 # save the 2nd file with the filename of the prev file in the output folder
 
