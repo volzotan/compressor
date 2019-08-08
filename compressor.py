@@ -241,6 +241,16 @@ if not args.align and not args.transform and not args.stitch:
 
     input_images_stacker = get_all_file_names(config.INPUT_DIR_STACKER)
 
+    num_discarded = 0
+    input_images_stacker_nonempty = []
+    for img in input_images_stacker:
+        if os.path.getsize(os.path.join(config.INPUT_DIR_STACKER, img)) < 100:
+            num_discarded += 1
+        else:
+            input_images_stacker_nonempty.append(img)
+    input_images_stacker = input_images_stacker_nonempty
+    print("discarded {} images smaller than 100 bytes".format(num_discarded))
+
     if config.SORT_IMAGES:
         input_images_stacker = sorted(input_images_stacker, key=_sort_helper)
 
