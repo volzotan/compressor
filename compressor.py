@@ -128,7 +128,7 @@ def _sort_helper(value):
             filename = os.path.splitext(value)[0]
             return int(filename)
         except ValueError as e:
-            return 0
+            return filename
 
 
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
@@ -253,6 +253,10 @@ if not args.align and not args.transform and not args.stitch:
 
     if config.SORT_IMAGES:
         input_images_stacker = sorted(input_images_stacker, key=_sort_helper)
+
+    # debug file sorting: 
+    # print(*input_images_stacker, sep="\n")
+    # exit()
 
     stacker.NAMING_PREFIX               = config.NAMING_PREFIX
     stacker.INPUT_DIRECTORY             = config.INPUT_DIR_STACKER
