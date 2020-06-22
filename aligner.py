@@ -11,10 +11,6 @@ mpl.use('Agg') # allows plotting with empty DISPLAY variable
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-import gi
-gi.require_version('GExiv2', '0.10')
-from gi.repository import GExiv2
-
 OUTPUT_STR  = "{0} {1:>5d}  / {2:>5d} | "
 OUTPUT_STR += "skipped {3:>4d} | "
 OUTPUT_STR += "aligned {4:>4d} | "
@@ -108,8 +104,8 @@ class Aligner(object):
 
     def _get_gradient(self, im):
         # Calculate the x and y gradients using Sobel operator
-        grad_x = cv2.Sobel(im,cv2.CV_32F,1,0,ksize=3)
-        grad_y = cv2.Sobel(im,cv2.CV_32F,0,1,ksize=3)
+        grad_x = cv2.Sobel(im,cv2.CV_32F, 1, 0, ksize=3)
+        grad_y = cv2.Sobel(im,cv2.CV_32F, 0, 1, ksize=3)
      
         # Combine the two gradients
         grad = cv2.addWeighted(np.absolute(grad_x), 0.5, np.absolute(grad_y), 0.5, 0)
@@ -137,11 +133,14 @@ class Aligner(object):
 
         if self.ALGORITHM == "ECC":
             try:
-                (cc, warp_matrix) = cv2.findTransformECC(self.reference_image_gray, im2_gray, warp_matrix, self.WARP_MODE, self.CRITERIA)
+                # see: https://docs.opencv.org/3.4.7/dc/d6b/group__video__track.html#ga1aa357007eaec11e9ed03500ecbcbe47
+                # inputMask     : An optional mask to indicate valid values of inputImage.
+                # gaussFiltSize : An optional value indicating size of gaussian blur filter; (DEFAULT: 5)
+                (cc, warp_matrix) = cv2.findTransformECC(self.reference_image_gray, im2_gray, warp_matrix, self.WARP_MODE, self.CRITERIA, None, 5)
             except Exception as e:
                 raise e
 
-        if self.ALGORITHM == "ORB":
+        elif self.ALGORITHM == "ORB":
             orb = cv2.ORB_create(self.MAX_FEATURES)
             im2_gray = np.uint8(im2_gray)
             keypoints2, descriptors2 = orb.detectAndCompute(im2_gray, None)
@@ -173,6 +172,9 @@ class Aligner(object):
             h, mask = cv2.findHomography(points1, points2, cv2.RANSAC)
             warp_matrix = h
 
+        else:
+            raise Exception("unknown algorithm: {}".format(self.ALGORITHM))
+
         return (im2, warp_matrix)
 
 
@@ -185,6 +187,12 @@ class Aligner(object):
         warp_matrix = self._create_warp_matrix()
 
         for image in images:
+
+            if self.SKIP_TRANSLATION > 0 and self.counter % self.SKIP_TRANSLATION != 0:
+                skip = True
+            else:
+                skip = False
+
             self.counter += 1
 
             if self.LIMIT > 0 and self.counter > self.LIMIT:
@@ -195,11 +203,6 @@ class Aligner(object):
                 self.already_existing += 1
                 print("{} already calculated".format(image))
                 continue
-
-            if self.SKIP_TRANSLATION > 0 and self.success % self.SKIP_TRANSLATION != 0:
-                skip = True
-            else:
-                skip = False
 
             timer_start = datetime.datetime.now()
             if not skip:
@@ -216,7 +219,8 @@ class Aligner(object):
                 # reuse warp matrix for next computation to speed up algorithm
                 warp_matrix = new_warp_matrix
             else:
-                new_warp_matrix = self._create_warp_matrix()
+                continue
+                # new_warp_matrix = self._create_warp_matrix()
 
             timediff = datetime.datetime.now() - timer_start
             self.success += 1

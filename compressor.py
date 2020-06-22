@@ -11,6 +11,9 @@ import sys
 import support
 import yaml
 
+import cv2
+import numpy as np
+
 import config
 
 
@@ -196,6 +199,7 @@ if args.align or args.transform:
     aligner.DOWNSIZE_FACTOR                 = config.DOWNSIZE_FACTOR
     aligner.JSON_SAVE_INTERVAL              = config.JSON_SAVE_INTERVAL
     aligner.SKIP_TRANSLATION                = config.SKIP_TRANSLATION
+    aligner.TRANSFER_METADATA               = config.TRANSFER_METADATA
 
     aligner.init()
 
@@ -241,15 +245,54 @@ if not args.align and not args.transform and not args.stitch:
 
     input_images_stacker = get_all_file_names(config.INPUT_DIR_STACKER)
 
-    num_discarded = 0
+    # min size
+
+    num_skipped = 0
     input_images_stacker_nonempty = []
     for img in input_images_stacker:
         if os.path.getsize(os.path.join(config.INPUT_DIR_STACKER, img)) < 100:
-            num_discarded += 1
+            num_skipped += 1
         else:
             input_images_stacker_nonempty.append(img)
     input_images_stacker = input_images_stacker_nonempty
-    print("discarded {} images smaller than 100 bytes".format(num_discarded))
+    print("skipped {} images smaller than 100 bytes".format(num_skipped))
+
+    # missing second image
+
+    num_skipped = 0
+    input_images_stacker_nonempty = []
+    for img in input_images_stacker:
+        if img.lower().endswith("_2.jpg") or img.lower().endswith("_2.tif"):
+            num_skipped += 1
+        else:
+            input_images_stacker_nonempty.append(img)
+    input_images_stacker = input_images_stacker_nonempty
+    print("skipped {} peaking images (suffix _2.EXTENSION)".format(num_skipped))
+
+    # min brightness
+
+    # if config.MIN_BRIGHTNESS_THRESHOLD is not None:
+    #     num_skipped = 0
+    #     input_images_stacker_nonempty = []
+    #     for img in input_images_stacker:
+
+    #         im = cv2.imread(os.path.join(config.INPUT_DIR_STACKER, img), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH) 
+            
+    #         # value = np.max(im) # brightest pixel
+    #         value = im.mean() # average brightness
+
+    #         if value < config.MIN_BRIGHTNESS_THRESHOLD:
+    #             num_skipped += 1
+    #         else:
+    #             input_images_stacker_nonempty.append(img)
+
+    #         # print("{} - {}".format(img, im.mean()))
+    #         # exit()
+
+    #     input_images_stacker = input_images_stacker_nonempty
+    #     print("skipped {} images darker than {}".format(num_skipped, config.MIN_BRIGHTNESS_THRESHOLD))
+
+    # sort
 
     if config.SORT_IMAGES:
         input_images_stacker = sorted(input_images_stacker, key=_sort_helper)
@@ -272,6 +315,12 @@ if not args.align and not args.transform and not args.stitch:
     stacker.PICKLE_NAME                 = config.PICKLE_NAME
 
     stacker.ALIGN                       = config.ALIGN
+
+    if config.ALIGN:
+        aligner.TRANSLATION_DATA        = config.TRANSLATION_DATA
+
+    stacker.MIN_BRIGHTNESS_THRESHOLD    = config.MIN_BRIGHTNESS_THRESHOLD
+
     stacker.DISPLAY_CURVE               = config.DISPLAY_CURVE
     stacker.APPLY_CURVE                 = config.APPLY_CURVE
 

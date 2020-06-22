@@ -3,6 +3,12 @@
 ## EXIF related:
 
 brew install pygobject3 --with-python3
+
+    in case pygobject can not be found (AttributeError: module 'gi' has no attribute 'require_version'), 
+    install pygobject via pip (requirements need to be installed separately):
+
+    pip install pygobject
+
 brew install tesseract (?)
 
 ### ubuntu:

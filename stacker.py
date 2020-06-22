@@ -22,10 +22,10 @@ from fractions import Fraction
 
 import matplotlib.pyplot as plt
 
+import exifread
 import gi
 gi.require_version('GExiv2', '0.10')
 from gi.repository import GExiv2
-
 
 """
     Stacker loads every image in INPUT_DIRECTORY,
@@ -57,6 +57,9 @@ from gi.repository import GExiv2
 
 """
 
+PEAKING_MODE_LIGHTEN        = "lighten"
+PEAKING_MODE_WEIGHTED_SUM   = "wsum"
+
 class Stopwatch(object):
 
     def __init__(self):
@@ -79,9 +82,14 @@ class Stacker(object):
 
     PICKLE_NAME         = "stack.pickle"
 
+    # LEFT TO RIGHT/START TO END BLEND MODE
+    BLEND_MODE                      = False #True
+
     # Align
     ALIGN                           = False
     USE_CORRECTED_TRANSLATION_DATA  = False
+
+    MIN_BRIGHTNESS_THRESHOLD        = 100
 
     # Curve
     DISPLAY_CURVE                   = False
@@ -89,7 +97,7 @@ class Stacker(object):
 
     # Peaking
     APPLY_PEAKING                   = True
-    PEAKING_STRATEGY                = "lighten"
+    PEAKING_STRATEGY                = PEAKING_MODE_LIGHTEN
     PEAKING_FROM_2ND_IMAGE          = False
     PEAKING_IMAGE_THRESHOLD         = None
     PEAKING_BLEND                   = True
@@ -223,9 +231,15 @@ class Stacker(object):
             print("tresor overflow status: {}%".format(round(overflow_perc, 2)))
 
         if self.APPLY_CURVE:
-            t = t / (self.weighted_average_divider)
+            if self.weighted_average_divider > 0:
+                t = t / (self.weighted_average_divider)
         else:
-            t = t / (self.counter)
+            if self.BLEND_MODE:
+                pass
+            else:
+                if self.counter > 0:
+                    t = t / (self.counter)
+            
 
         if self.APPLY_PEAKING:
 
@@ -260,7 +274,7 @@ class Stacker(object):
             # s = np.asarray(peaked, np.uint16)
             # cv2.imwrite(filepath + ".peaking.jpg", s)
 
-            if self.PEAKING_STRATEGY == "lighten":
+            if self.PEAKING_STRATEGY == PEAKING_MODE_LIGHTEN:
                 
                 p = self.peaking_tresor.copy()
                 if (p.max() > 1): 
@@ -268,10 +282,13 @@ class Stacker(object):
                     # p = p * self.CLIPPING_VALUE
                     p = np.clip(p, 0, self.CLIPPING_VALUE)
                 s = np.asarray(p, np.uint16)
-                cv2.imwrite(filepath + ".peaking.jpg", s)
+                cv2.imwrite(filepath + ".peaking" + self.EXTENSION, s)
 
                 if self.PEAKING_BLEND:
                     t = np.add(t, p * self.PEAKING_MUL_FACTOR)
+
+            else:
+                raise Exception("unknown peaking strategy: {}".format(self.PEAKING_STRATEGY))
 
             if self.DEBUG:
                 print("saving: max value in image: {}".format(np.amax(t)))
@@ -286,6 +303,9 @@ class Stacker(object):
         s = np.asarray(t, np.uint16)
         cv2.imwrite(filepath, s)
 
+        if self.WRITE_METADATA:
+            self.write_metadata(filepath, self.metadata)
+
         return filepath
 
 
@@ -296,23 +316,21 @@ class Stacker(object):
         earliest_image  = None
         latest_image    = None
 
-        #gi.require_version('GExiv2', '0.10')
-        #from gi.repository import GExiv2
-
         for image in images:
-            metadata = GExiv2.Metadata()
-            metadata.open_path(os.path.join(self.INPUT_DIRECTORY, image))
+   
+            with open(os.path.join(self.INPUT_DIRECTORY, image), 'rb') as f:
+                metadata = exifread.process_file(f)
 
-            try:
-                timetaken = datetime.datetime.strptime(metadata.get_tag_string("Exif.Photo.DateTimeOriginal"), self.EXIF_DATE_FORMAT)
-            except Exception as e:
-                continue;
+                try:
+                    timetaken = datetime.datetime.strptime(metadata["EXIF DateTimeOriginal"], self.EXIF_DATE_FORMAT)
+                except Exception as e:
+                    continue;
 
-            if earliest_image is None or earliest_image[1] > timetaken:
-                earliest_image = (image, timetaken)
+                if earliest_image is None or earliest_image[1] > timetaken:
+                    earliest_image = (image, timetaken)
 
-            if latest_image is None or latest_image[1] < timetaken:
-                latest_image = (image, timetaken)
+                if latest_image is None or latest_image[1] < timetaken:
+                    latest_image = (image, timetaken)
 
         if earliest_image is not None and latest_image is not None:
             info["exposure_time"] = (latest_image[1] - earliest_image[1]).total_seconds()
@@ -320,47 +338,48 @@ class Stacker(object):
             info["exposure_time"] = 0
             print("exposure_time could not be computed")
 
-        metadata = GExiv2.Metadata()
-        metadata.open_path(os.path.join(self.INPUT_DIRECTORY, images[0]))
+        with open(os.path.join(self.INPUT_DIRECTORY, images[0]), 'rb') as f:
+            metadata = exifread.process_file(f)
 
-        # capture date
-        if latest_image is not None:
-            info["capture_date"] = latest_image[1]
-        else:
-            info["capture_date"] = datetime.datetime.now()
-            print("exposure_time could not be computed")
+            # capture date
+            if latest_image is not None:
+                info["capture_date"] = latest_image[1]
+            else:
+                info["capture_date"] = datetime.datetime.now()
+                print("exposure_time could not be computed")
 
-        # number of images
-        info["exposure_count"] = len(images)
+            # number of images
+            info["exposure_count"] = len(images)
 
-        # focal length
-        info["focal_length"] = metadata.get_focal_length()
-        if info["focal_length"] < 0:
-            print("EXIF: focal length missing")
-            info["focal_length"] = None
+            # focal length
+            value = metadata["EXIF FocalLength"].values[0]
+            info["focal_length"] = value.num / value.den
+            if info["focal_length"] < 0:
+                print("EXIF: focal length missing")
+                info["focal_length"] = None
 
-        # compressor version
-        try:
-            info["version"] = subprocess.check_output(["git", "describe", "--always"], cwd=self.BASE_DIR)
-            info["version"] = info["version"].decode("utf-8")
-            if info["version"][-1] == "\n":
-                info["version"] = info["version"][:-1]
-        except Exception as e:
-            print(str(e))
-            info["version"] = "not-available"
+            # compressor version
+            try:
+                info["version"] = subprocess.check_output(["git", "describe", "--always"], cwd=self.BASE_DIR)
+                info["version"] = info["version"].decode("utf-8")
+                if info["version"][-1] == "\n":
+                    info["version"] = info["version"][:-1]
+            except Exception as e:
+                print(str(e))
+                info["version"] = "not-available"
 
-        # compressing date
-        info["compressing_date"] = datetime.datetime.now()
+            # compressing date
+            info["compressing_date"] = datetime.datetime.now()
 
-        return info
+            return info
 
 
     def write_metadata(self, filepath, info):
+
         metadata = GExiv2.Metadata()
         metadata.open_path(filepath)
 
         compressor_name = "compressor v[{}]".format(info["version"])
-        print(compressor_name)
 
         # Exif.Image.ProcessingSoftware is overwritten by Lightroom when the final export is done
         key = "Exif.Image.ProcessingSoftware";  metadata.set_tag_string(key, compressor_name)
@@ -384,7 +403,7 @@ class Stacker(object):
         # TODO GPS Location
 
         metadata.save_file(filepath)
-        print("metadata written to {}".format(filepath))
+        # print("metadata written to {}".format(filepath))
 
 
     def _intensity(self, shutter, aperture, iso):
@@ -599,13 +618,33 @@ class Stacker(object):
 
         # ------------------------------------------------------------------------------------------------------------------------
 
-        # Method 4:
+        # Method 4a:
         # Act like Photoshops Lighten layer blend mode
         # Replace (for each RGB channel separately) every pixel which is brighter in the following images
+
+        # if self.PEAKING_STRATEGY == "lighten":
+
+        #     brighter_mask = self.peaking_tresor < datacopy 
+        #     min_brightness_mask = datacopy > 200
+
+        #     brighter_mask = np.logical_and(brighter_mask, min_brightness_mask)
+
+        #     self.peaking_tresor[brighter_mask] = datacopy[brighter_mask]
+
+        # ------------------------------------------------------------------------------------------------------------------------
+
+        # Method 4b:
+        # Like 4a, but if one channel is above threshold, all channels are replaced
 
         if self.PEAKING_STRATEGY == "lighten":
 
             brighter_mask = self.peaking_tresor < datacopy 
+            
+            # min_brightness_mask = datacopy > 120
+            # min_brightness_mask = np.any(min_brightness_mask, axis=2, keepdims=True)
+
+            # brighter_mask = np.logical_and(brighter_mask, min_brightness_mask)
+
             self.peaking_tresor[brighter_mask] = datacopy[brighter_mask]
 
         # ------------------------------------------------------------------------------------------------------------------------
@@ -727,44 +766,91 @@ class Stacker(object):
         im = self._load_image(f, directory=self.INPUT_DIRECTORY)
         self.stopwatch["load_image"] += self.stop_time()
 
-        if self.ALIGN:
-            # translation_data[f] = ( matrix, (computed_x, computed_y), (corrected_x, corrected_y) ) 
-            im = self.aligner.transform(im, np.matrix(self.translation_data[f][0]), im.shape)
-            self.stopwatch["transform_image"] += self.stop_time()
+        skip_processing = False
 
-        # data = np.array(im, np.int) # 100ms slower per image
-        data = np.uint64(np.asarray(im, np.uint64))
-        self.stopwatch["convert_to_array"] += self.stop_time()
+        # check if the image is too dark to care
+        if self.MIN_BRIGHTNESS_THRESHOLD is not None:
+                
+            # value = np.max(im) # brightest pixel
+            value = im.mean() # average brightness
 
-        if not self.APPLY_CURVE:
-            self.tresor = np.add(self.tresor, data)
+            if value < self.MIN_BRIGHTNESS_THRESHOLD:
+                print("skipping image: {} (brightness below threshold)".format(f))
+                skip_processing = True
 
-        if self.APPLY_CURVE:
-            multiplier = self.curve[self.counter-1]["inverted_absolute"]
-            print(multiplier)
-            self.tresor = np.add(self.tresor, data * multiplier)
-            self.weighted_average_divider += multiplier
+        if not skip_processing:
 
-        self.stopwatch["adding"] += self.stop_time()
+            if self.ALIGN:
+                # translation_data[f] = ( matrix, (computed_x, computed_y), (corrected_x, corrected_y) ) 
 
-        if self.APPLY_PEAKING:
-            image_brightness = self.curve[self.counter-1]["brightness"]
-            if self.PEAKING_IMAGE_THRESHOLD is None or self.PEAKING_IMAGE_THRESHOLD > image_brightness:
-                if self.PEAKING_FROM_2ND_IMAGE:
-                    second_image_data = self._load_image(f, directory=os.path.join(self.INPUT_DIRECTORY, "2nd"))
-                    if second_image_data is not None:
-
-                        if self.ALIGN:
-                            second_image_data = self.aligner.transform(second_image_data, np.matrix(self.translation_data[f][0]), second_image_data.shape)
-
-                        self.apply_peaking(second_image_data)
+                warp_matrix_key = None
+                for key in self.translation_data.keys():
+                    if key.lower() <= f.lower():
+                        warp_matrix_key = key
                     else:
-                        print("2ND IMAGE MISSING {}".format(f))
+                        break
+
+                # if f not in self.translation_data:
+                if warp_matrix_key is None:
+                    print("not aligned: translation data missing for {}".format(f))
                 else:
-                    self.apply_peaking(data)
-            # else: 
-            #     print("image {} skipped for peaking due to threshold ({})".format(f, image_brightness))
-            self.stopwatch["peaking"] += self.stop_time()
+
+                    matrix = np.matrix(self.translation_data[warp_matrix_key][0])
+
+                    sum_abs_trans = abs(matrix[0, 2]) + abs(matrix[1, 2])
+                    if sum_abs_trans > 100:
+                        print("\n   image {} not aligned: values too big: {:.2f}".format(f, sum_abs_trans))
+                    else:
+                        im = self.aligner.transform(im, matrix, im.shape)
+                        self.stopwatch["transform_image"] += self.stop_time()
+
+            # data = np.array(im, np.int) # 100ms slower per image
+            data = np.uint64(np.asarray(im, np.uint64))
+            self.stopwatch["convert_to_array"] += self.stop_time()
+
+            if not self.APPLY_CURVE:
+
+                if self.BLEND_MODE:
+                    window_size = int(self.DIMENSIONS[0] / len(self.input_images))
+                    start = 0 + (self.counter-1) * window_size
+                    end = start + window_size
+
+                    if self.counter == len(self.input_images):
+                        end = self.DIMENSIONS[0]-1
+
+                    self.tresor[:, start:end] = data[:, start:end]
+                else:
+                    self.tresor = np.add(self.tresor, data)
+
+            if self.APPLY_CURVE:
+                multiplier = self.curve[self.counter-1]["inverted_absolute"]
+                # print(multiplier)
+                self.tresor = np.add(self.tresor, data * multiplier)
+                self.weighted_average_divider += multiplier
+
+            self.stopwatch["adding"] += self.stop_time()
+
+            if self.APPLY_PEAKING:
+                image_brightness = self.curve[self.counter-1]["brightness"]
+                if self.PEAKING_IMAGE_THRESHOLD is None or self.PEAKING_IMAGE_THRESHOLD > image_brightness:
+                    if self.PEAKING_FROM_2ND_IMAGE:
+                        second_image_data = self._load_image(f, directory=os.path.join(self.INPUT_DIRECTORY, "2nd"))
+                        if second_image_data is not None:
+
+                            if self.ALIGN:
+                                if f not in self.translation_data:
+                                    print("not aligned: translation data missing for {}".format(f))
+                                else:
+                                    second_image_data = self.aligner.transform(second_image_data, np.matrix(self.translation_data[f][0]), second_image_data.shape)
+
+                            self.apply_peaking(second_image_data)
+                        else:
+                            print("2ND IMAGE MISSING {}".format(f))
+                    else:
+                        self.apply_peaking(data)
+                # else: 
+                #     print("image {} skipped for peaking due to threshold ({})".format(f, image_brightness))
+                self.stopwatch["peaking"] += self.stop_time()
 
         self.stacked_images.append(f)
 
@@ -792,7 +878,7 @@ class Stacker(object):
 
         self.input_images = inp_imgs
 
-        # self.input_images = self.input_images[289:]
+        # self.input_images = self.input_images[:720]
 
         # print shutter intervals to check for deviations
         # for i in range(1, len(self.input_images)):
@@ -851,6 +937,7 @@ class Stacker(object):
             self.display_curve(self.curve)
 
         if self.ALIGN:
+            print("translation data: {}".format(self.aligner.TRANSLATION_DATA))
             self.translation_data = json.load(open(self.aligner.TRANSLATION_DATA, "r"))
 
         # for item in self.curve:
@@ -868,8 +955,6 @@ class Stacker(object):
                 raise(e)
 
         filepath = self.save(fixed_name=self.FIXED_OUTPUT_NAME)
-        if self.WRITE_METADATA:
-            self.write_metadata(filepath, self.metadata)
 
         print("finished. time total: {}".format(datetime.datetime.now() - self.starttime))
         sys.exit(0)

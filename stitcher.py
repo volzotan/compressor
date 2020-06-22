@@ -51,6 +51,44 @@ class Stitcher(object):
         return warpedImage
 
 
+    def match_keypoints(self, images, features):
+
+        stopwatch = time.time()
+
+        FLANN_INDEX_KDTREE = 0
+        index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+        search_params = dict(checks=50)   # or pass empty dictionary
+
+        flann = cv2.FlannBasedMatcher(index_params, search_params)
+        matches = flann.knnMatch(features[0]["descriptors"], features[1]["descriptors"], k=2)
+
+        good = []
+        for item in matches:
+            if item[0].distance < item[1].distance * 0.7:
+                good.append(item)
+
+        print("matching: {0:.2}s".format(time.time()-stopwatch))
+        print("total matches: {0:4d} | good matches: {1:4d} | ratio: {2:.1f}%".format(len(matches), len(good), len(matches)/len(good)))
+            
+        draw_params = {}
+        im3 = cv2.drawMatchesKnn(images[0], features[0]["keypoints"], images[1], features[0]["keypoints"], matches, None, **draw_params)
+        cv2.imwrite("correspondences_all.jpg", im3)
+        im3 = cv2.drawMatchesKnn(images[0], features[0]["keypoints"], images[1], features[0]["keypoints"], good, None, **draw_params)
+        cv2.imwrite("correspondences_good.jpg", im3)
+
+        srcPoints = []
+        dstPoints = []
+
+        for item in good:
+            srcPoints.append(features[1]["keypoints"][item[0].trainIdx].pt)
+            dstPoints.append(features[0]["keypoints"][item[0].queryIdx].pt)
+
+        srcPoints = np.float32(srcPoints)
+        dstPoints = np.float32(dstPoints)
+
+        return (srcPoints, dstPoints)
+
+
     def process(self, imageset):
         print(imageset)
 
@@ -73,41 +111,11 @@ class Stitcher(object):
         print("SIFT: {0:.2}s".format(time.time()-stopwatch))
         stopwatch = time.time()
 
-        # FLANN parameters
-        FLANN_INDEX_KDTREE = 0
-        index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
-        search_params = dict(checks=50)   # or pass empty dictionary
-        draw_params = {}
+        srcPoints, dstPoints = self.match_keypoints(ims, features)
 
-        flann = cv2.FlannBasedMatcher(index_params, search_params)
-        matches = flann.knnMatch(features[0]["descriptors"], features[1]["descriptors"], k=2)
-
-        good = []
-        for item in matches:
-            if item[0].distance < 0.7 * item[1].distance:
-                good.append(item)
-
-        print("matching: {0:.2}s".format(time.time()-stopwatch))
-        stopwatch = time.time()
-
-        print("total matches: {0:4d} | good matches: {1:4d} | ratio: {2:.1f}%".format(len(matches), len(good), len(matches)/len(good)))
-
-        if (len(good) < 4):
+        if (len(srcPoints) < 4):
             print("too few corresponding points. abort.")
             sys.exit(-1)
-
-        im3 = cv2.drawMatchesKnn(ims[0], features[0]["keypoints"], ims[1], features[0]["keypoints"], good, None, **draw_params)
-        cv2.imwrite("correspondences.jpg", im3)
-
-        srcPoints = []
-        dstPoints = []
-
-        for item in good:
-            srcPoints.append(features[1]["keypoints"][item[0].trainIdx].pt)
-            dstPoints.append(features[0]["keypoints"][item[0].queryIdx].pt)
-
-        srcPoints = np.float32(srcPoints)
-        dstPoints = np.float32(dstPoints)
 
         h, _ = cv2.findHomography(srcPoints, dstPoints, cv2.RANSAC, 4)
 
