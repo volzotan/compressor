@@ -3,8 +3,8 @@ import cv2
 import numpy as np
 
 # INPUT_DIR = "/Users/volzotan/Downloads/test/sunday_marie2/captures_2"
-# BASE_DIR        = "/Users/volzotan/Documents/trashcam_library/2020-04-08_marktplatz"
-BASE_DIR        = "/Users/volzotan/Downloads/hqtest2"
+# BASE_DIR        = "/Users/volzotan/Documents/trashcam_library/2020-06-27_frauenplan"
+BASE_DIR        = "/Users/volzotan/Documents/trashcam_library/2020-07-06_pragerstrasse1"
 INPUT_DIR_PAR   = BASE_DIR + "/captures_{}"
 # OUTPUT_DIR_PAR  = BASE_DIR + "/test" + "/captures_{}_peaked"
 OUTPUT_DIR_PAR  = BASE_DIR + "/captures_{}_peaked"

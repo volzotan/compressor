@@ -355,7 +355,7 @@ class Aligner(object):
         return_value = subprocess.call(["exiftool", "-TagsFromFile", source, destination])
         subprocess.call(["exiftool", "-delete_original!", destination])
 
-        if return_value is not 0:
+        if return_value != 0:
             print("transfer metadata failed")
 
         # metadata_source = GExiv2.Metadata()

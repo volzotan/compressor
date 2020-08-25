@@ -1,4 +1,6 @@
 pillow
 scipy
+scikit-image
+exifread
 matplotlib
 pyyaml

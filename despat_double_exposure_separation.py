@@ -2,10 +2,11 @@ import os
 import shutil
 from datetime import datetime
 
-INPUT_FOLDER    = "/Users/volzotan/Downloads/despat_download/despat"
+INPUT_FOLDER    = "/Volumes/ctdrive/export_koerbersee2"
 OUTPUT_FOLDER   = os.path.join(INPUT_FOLDER, "2nd")
 
-EXTENSION = ".jpg"
+# EXTENSION = ".jpg"
+EXTENSION = ".tif"
 
 MAX_TIME_DIFF = 3000
 
