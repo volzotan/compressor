@@ -35,15 +35,8 @@ OUTPUT_DIR_STITCHER             = INPUT_DIR_STITCHER + "_stitch"
 
 
 NAMING_PREFIX                   = ""
-# INPUT_DIR_STACKER               = "/media/internal/DESPATDATASETS/20-01-17_goetheplatz_aligned"
-# INPUT_DIR_STACKER               = "/Users/volzotan/Documents/DESPATDATASETS/19-12-21_augustbaudertplatz_aligned"
-# INPUT_DIR_STACKER               = "/Volumes/ctdrive/export_theaterplatz5_tiff"
-# INPUT_DIR_STACKER               = "/media/internal/DESPATDATASETS/20-01-26_theaterplatz/frames"
-INPUT_DIR_STACKER               = "/Users/volzotan/Documents/trashcam_library/2020-07-06_pragerstrasse1/captures_1"
-# INPUT_DIR_STACKER               = "/Users/volzotan/Downloads/hqtest/captures_1"
-# OUTPUT_DIR_STACKER              = "/media/internal/DESPATDATASETS/20-01-26_theaterplatz_aligned_stacked"
-OUTPUT_DIR_STACKER              = INPUT_DIR_STACKER + "_stacked" 
-# OUTPUT_DIR_STACKER              = "/Users/volzotan/Downloads/stackeroutput/output9_stacked" 
+# INPUT_DIR_STACKER               = ""
+# OUTPUT_DIR_STACKER              = INPUT_DIR_STACKER + "_stacked" 
 FIXED_OUTPUT_NAME               = "output"
 PICKLE_NAME                     = "stack.pickle"
 
@@ -53,15 +46,6 @@ ALIGN                           = False
 MIN_BRIGHTNESS_THRESHOLD        = 10
 
 APPLY_CURVE                     = True
-
-APPLY_PEAKING                   = False
-PEAKING_STRATEGY                = stacker.PEAKING_MODE_LIGHTEN
-PEAKING_FROM_2ND_IMAGE          = True 
-PEAKING_IMAGE_THRESHOLD         = None #11
-PEAKING_BLEND                   = False
-PEAKING_PIXEL_THRESHOLD         = None  # is ignored right now
-PEAKING_MUL_FACTOR              = 0.3   # is ignored right now
-
 WRITE_METADATA                  = True
 
 SAVE_INTERVAL                   = 100
@@ -71,7 +55,6 @@ PICKLE_INTERVAL                 = -1
 # debug
 
 DISPLAY_CURVE                   = False
-DISPLAY_PEAKING                 = False
 
 
 # ----------------------- meta --------------------------

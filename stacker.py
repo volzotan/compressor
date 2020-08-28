@@ -1,38 +1,36 @@
 #!/usr/bin/env python
 
+import support
+
 import json
 import sys
 import os
 import pickle
 import datetime
 import subprocess
-import support
-
-from PIL import Image
-
-import cv2
-
-import numpy as np
-
-from scipy.ndimage.filters import gaussian_filter
-from skimage import color
-
+import logging
 import math
 from fractions import Fraction
 
+from PIL import Image
+import cv2
+import numpy as np
+from scipy.ndimage.filters import gaussian_filter
+from skimage import color
 import matplotlib.pyplot as plt
 
 import exifread
+
 import gi
 gi.require_version('GExiv2', '0.10')
 from gi.repository import GExiv2
+
 
 """
     Stacker loads every image in INPUT_DIRECTORY,
     stacks it and writes output to RESULT_DIRECTORY.
 
     Do not run with pypy! (Saving image is 30-40s slower)
-
 
     =====
     compressor writes EXIF Metadata to generated image file
@@ -49,16 +47,11 @@ from gi.repository import GExiv2
     TODO:
 
     improve metadata reading
-    change how the curve is applied
-        problem: logarithmic curve is applied linear
-        daytime is e.g. 20 while dawn is 16
-        (daytime image shall be 8x brighter,
-        but is only 20 percent brighter)
 
 """
 
-PEAKING_MODE_LIGHTEN        = "lighten"
-PEAKING_MODE_WEIGHTED_SUM   = "wsum"
+BLEND_MODE_STACK                = "stack"
+BLEND_MODE_PEAK                 = "peak"
 
 class Stopwatch(object):
 
@@ -69,21 +62,21 @@ class Stopwatch(object):
         pass
 
 
-class Stacker(object):
+class Stack(object):
 
-    NAMING_PREFIX       = ""
-    INPUT_DIRECTORY     = "images"
-    RESULT_DIRECTORY    = "stack_" + NAMING_PREFIX
-    FIXED_OUTPUT_NAME   = None
-    DIMENSIONS          = None # (length, width)
-    EXTENSION           = ".tif"
+    NAMING_PREFIX                   = ""
+    INPUT_DIRECTORY                 = "images"
+    RESULT_DIRECTORY                = "stack_" + NAMING_PREFIX
+    FIXED_OUTPUT_NAME               = None
+    DIMENSIONS                      = None # (length, width)
+    EXTENSION                       = ".tif"
 
-    BASE_DIR            = None
+    BASE_DIR                        = None
 
-    PICKLE_NAME         = "stack.pickle"
+    PICKLE_NAME                     = "stack.pickle"
 
-    # LEFT TO RIGHT/START TO END BLEND MODE
-    BLEND_MODE                      = False #True
+    # Image blend mode (stack / peak)
+    BLEND_MODE                      = BLEND_MODE_STACK
 
     # Align
     ALIGN                           = False
@@ -95,33 +88,19 @@ class Stacker(object):
     DISPLAY_CURVE                   = False
     APPLY_CURVE                     = False
 
-    # Peaking
-    APPLY_PEAKING                   = True
-    PEAKING_STRATEGY                = PEAKING_MODE_LIGHTEN
-    PEAKING_FROM_2ND_IMAGE          = False
-    PEAKING_IMAGE_THRESHOLD         = None
-    PEAKING_BLEND                   = True
+    WRITE_METADATA                  = True
+    SAVE_INTERVAL                   = 15
+    PICKLE_INTERVAL                 = -1
 
-    # PEAKING_PIXEL_THRESHOLD         = 0.95
-    # PEAKING_MUL_FACTOR              = 1.0
-    # PEAKING_BLUR                    = True
-    # PEAKING_GAUSSIAN_FILTER_SIZE    = 1
-
-    WRITE_METADATA      = True
-
-    SAVE_INTERVAL       = 15
-    PICKLE_INTERVAL     = -1
-
-    DEBUG               = False
+    DEBUG                           = False
 
     # misc
 
-    EXIF_DATE_FORMAT    = '%Y:%m:%d %H:%M:%S'
+    EXIF_DATE_FORMAT                = '%Y:%m:%d %H:%M:%S'
 
     # debug options
 
-    DISPLAY_PEAKING     = False
-    CLIPPING_VALUE      = -1
+    CLIPPING_VALUE                  = -1
 
     # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
@@ -136,20 +115,23 @@ class Stacker(object):
         self.stacked_images                     = []
 
         self.weighted_average_divider           = 0
-        self.peaking_weighted_average_divider   = 0
 
         self.stopwatch                          = {
             "load_image": 0,
             "transform_image": 0,
             "convert_to_array": 0,
             "curve": 0,
-            "peaking": 0,
-            "adding": 0,
+            "blending": 0,
             "write_image": 0
         }
 
         self.tresor                             = None
-        self.peaking_tresor                     = None
+
+        # initialize log
+
+        self.log = logging.getLogger("stacker")
+        self.log.setLevel(logging.DEBUG)
+        self.log.debug("init")
 
 
     """
@@ -171,32 +153,34 @@ class Stacker(object):
     def print_config(self):
 
         config = [
-        ("directories:", ""),
-        ("   input:  {}", self.INPUT_DIRECTORY),
-        ("   output: {}", self.RESULT_DIRECTORY),
-        ("   prefix: {}", self.NAMING_PREFIX),
-        ("extension: {}", self.EXTENSION),
-        (" ", " "),
-        ("modifications:", ""),
-        ("   align:   {}", str(self.ALIGN)),
-        ("   curve:   {}", str(self.APPLY_CURVE)),
-        ("   peaking: {}", str(self.APPLY_PEAKING)),
-        (" ", " "),
-        ("save interval:   {}", str(self.SAVE_INTERVAL)),
-        ("pickle interval: {}", str(self.PICKLE_INTERVAL))
+            ("blend mode:       {}", str(self.BLEND_MODE)),
+            (" ", " "),
+            ("directories:", ""),
+            ("   input:         {}", self.INPUT_DIRECTORY),
+            ("   output:        {}", self.RESULT_DIRECTORY),
+            ("   prefix:        {}", self.NAMING_PREFIX),
+            ("extension:        {}", self.EXTENSION),
+            (" ", " "),
+            ("modifications:", ""),
+            ("   align:         {}", str(self.ALIGN)),
+            ("   curve:         {}", str(self.APPLY_CURVE)),
+            (" ", " "),
+            ("save interval:    {}", str(self.SAVE_INTERVAL)),
+            ("pickle interval:  {}", str(self.PICKLE_INTERVAL))
         ]
 
+        self.log.debug("CONFIG:")
         for line in config:
             if len(line) > 1:
-                print(line[0].format(support.Color.BOLD + line[1] + support.Color.END))
+                self.log.debug(line[0].format(support.Color.BOLD + line[1] + support.Color.END))
             else:
-                print(line)
+                self.log.debug(line)
 
-        print("---------------------------------------")
+        self.log.debug("---------------------------------------")
 
 
     def write_pickle(self, tresor, stacked_images):
-        print("dump the pickle...")
+        self.log.debug("dump the pickle...")
         pick = {}
         pick["stacked_images"] = stacked_images
         pick["tresor"]         = tresor
@@ -234,70 +218,8 @@ class Stacker(object):
             if self.weighted_average_divider > 0:
                 t = t / (self.weighted_average_divider)
         else:
-            if self.BLEND_MODE:
-                pass
-            else:
-                if self.counter > 0:
-                    t = t / (self.counter)
-            
-
-        if self.APPLY_PEAKING:
-
-            """
-            different methods of peaking:
-            * sum up all the peaking values, apply the multiplication factor and add to tresor before the division happens
-            * sum up all the peaking values, clip the limits at the max allowed value
-
-            PEAKING_MUL_FACTOR doesn't need to be a fixed value, it may be also something like counter/2
-
-            """
-
-            # if self.DEBUG:
-            #     print("saving: max value before peaking in image: {}".format(np.amax(t)))
-
-            # # clip to max value
-            # peaked = np.clip(self.peaking_tresor, 0, self.CLIPPING_VALUE)
-
-            # # blur the result to avoid sharp edges
-            # if self.PEAKING_BLUR:
-            #     peaked = gaussian_filter(peaked, sigma=self.PEAKING_GAUSSIAN_FILTER_SIZE)
-
-            # peaked = np.asarray(peaked * self.PEAKING_MUL_FACTOR, np.uint64)
-
-            # peaked = self.peaking_tresor.copy()
-
-            # if self.APPLY_CURVE:
-            #     peaked = peaked / (self.peaking_weighted_average_divider)
-            # else:
-            #     peaked = peaked / (self.counter)
-
-            # s = np.asarray(peaked, np.uint16)
-            # cv2.imwrite(filepath + ".peaking.jpg", s)
-
-            if self.PEAKING_STRATEGY == PEAKING_MODE_LIGHTEN:
-                
-                p = self.peaking_tresor.copy()
-                if (p.max() > 1): 
-                    # p = p / (p.max() * 0.5)  # TODO?
-                    # p = p * self.CLIPPING_VALUE
-                    p = np.clip(p, 0, self.CLIPPING_VALUE)
-                s = np.asarray(p, np.uint16)
-                cv2.imwrite(filepath + ".peaking" + self.EXTENSION, s)
-
-                if self.PEAKING_BLEND:
-                    t = np.add(t, p * self.PEAKING_MUL_FACTOR)
-
-            else:
-                raise Exception("unknown peaking strategy: {}".format(self.PEAKING_STRATEGY))
-
-            if self.DEBUG:
-                print("saving: max value in image: {}".format(np.amax(t)))
-
-            # TODO: check for any overflows of single pixels
-            # e.g.: through peaking for example some pixels may be brighter than allows.
-            #       those need to be capped
-
-            t = np.clip(t, 0, self.CLIPPING_VALUE)
+            if self.counter > 0:
+                t = t / (self.counter)
 
         # convert to uint16 for saving, 0.5s faster than usage of t.astype(np.uint16)
         s = np.asarray(t, np.uint16)
@@ -374,6 +296,7 @@ class Stacker(object):
             return info
 
 
+    # def write_metadata_gexiv(self, filepath, info):
     def write_metadata(self, filepath, info):
 
         metadata = GExiv2.Metadata()
@@ -404,6 +327,18 @@ class Stacker(object):
 
         metadata.save_file(filepath)
         # print("metadata written to {}".format(filepath))
+
+
+    # def write_metadata(self, filepath, info):
+
+    #     metadata = GExiv2.Metadata()
+    #     metadata.open_path(filepath)
+
+    #     exif_dict = piexif.load(path)
+    #     new_exif = adjust_exif(exif_dict)
+    #     exif_bytes = piexif.dump(new_exif)
+    #     piexif.insert(exif_bytes, path)
+
 
 
     def _intensity(self, shutter, aperture, iso):
@@ -536,152 +471,6 @@ class Stacker(object):
         # plt.show()
 
 
-    def apply_peaking(self, data):
-
-        # TODO: beware modifies original image data! (but is faster than copying)
-        datacopy = data #data.copy()
-
-        # ------------------------------------------------------------------------------------------------------------------------
-
-        # # Method 1:
-        # # calculate boolean mask for every color channel separately
-        # # combine single color channel masks via AND
-        # # all three channels must be > PEAKING_THRESHOLD
-        # mask_rgb = data > self.PEAKING_THRESHOLD
-        # mask = np.logical_and(mask_rgb[:,:,0], mask_rgb[:,:,1], mask_rgb[:,:,2])
-
-        # ------------------------------------------------------------------------------------------------------------------------
-
-        # # Method 2:
-        # # if the average of RGB value of an pixel is above the threshold 
-        # mask_rgb = np.mean(datacopy, axis=2) > self.PEAKING_THRESHOLD
-        # mask = mask_rgb
-
-        # # improve the mask
-        # kernel = np.ones((5,5), np.uint8)
-        # mask = np.asarray(mask, np.uint8)
-        # mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-        # mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-        # mask = mask.astype(bool)
- 
-        # # invert mask and set everything to 0 if condition is not met
-        # datacopy[~mask] = 0
-
-        # data_mean = np.mean(datacopy, axis=2)
-        # mask_below = data_mean < int(self.CLIPPING_VALUE * 0.6)
-        # mask_above = data_mean > int(self.CLIPPING_VALUE * 0.9)
-        # mask_between = np.logical_and(~mask_below, ~mask_above)
-
-        # datacopy[mask_below] = 0
-        # print(datacopy.shape)
-        # datacopy = np.subtract(datacopy[mask_between], int(self.CLIPPING_VALUE * 0.6))
-        # datacopy.reshape()
-        # print(datacopy.shape)
-        # # datacopy[mask_between] -= int(self.CLIPPING_VALUE * 0.6)
-        # # datacopy = np.multiply(datacopy[mask_between], int(self.CLIPPING_VALUE * 0.9) / int(self.CLIPPING_VALUE * 0.6))
-        # datacopy[mask_above] = 0
-
-        # ------------------------------------------------------------------------------------------------------------------------
-
-        # Method 3:
-        # Convert to HSV to get a value for the brightness of single pixels
-        # (using the avg. RGB value results in nasty problems with color channels 
-        # when tinkering with the brightness)
-
-        # hsv_im = color.rgb2hsv(datacopy)
-
-        # a = 0.80
-        # b = 0.98 # maybe too low?
-
-        # mask_below = hsv_im[:, :, 2] < a
-
-        # mask_above = hsv_im[:, :, 2] > b
-        # # improve the mask for the bright areas a bit
-        # kernel = np.ones((5,5), np.uint8)
-        # mask_above = np.asarray(mask_above, np.uint8)
-        # mask_above = cv2.morphologyEx(mask_above, cv2.MORPH_OPEN, kernel)
-        # mask_above = cv2.morphologyEx(mask_above, cv2.MORPH_CLOSE, kernel)
-        # mask_above = mask_above.astype(bool)
-
-        # mask_between = np.logical_and(~mask_below, ~mask_above)
-
-        # # cut off all dark areas
-        # hsv_im[mask_below] = 0
-
-        # # adjust range from 0 -- a - b -- 1 to 0 - b -- 1 
-        # # for medium bright areas
-        # hsv_im[mask_between, 2] -= a
-        # hsv_im[mask_between, 2] *= (1/(b - a))
-        # hsv_im[mask_between, 2] *= b
-
-        # datacopy = color.hsv2rgb(hsv_im) * self.CLIPPING_VALUE
-
-        # ------------------------------------------------------------------------------------------------------------------------
-
-        # Method 4a:
-        # Act like Photoshops Lighten layer blend mode
-        # Replace (for each RGB channel separately) every pixel which is brighter in the following images
-
-        # if self.PEAKING_STRATEGY == "lighten":
-
-        #     brighter_mask = self.peaking_tresor < datacopy 
-        #     min_brightness_mask = datacopy > 200
-
-        #     brighter_mask = np.logical_and(brighter_mask, min_brightness_mask)
-
-        #     self.peaking_tresor[brighter_mask] = datacopy[brighter_mask]
-
-        # ------------------------------------------------------------------------------------------------------------------------
-
-        # Method 4b:
-        # Like 4a, but if one channel is above threshold, all channels are replaced
-
-        if self.PEAKING_STRATEGY == "lighten":
-
-            brighter_mask = self.peaking_tresor < datacopy 
-            
-            # min_brightness_mask = datacopy > 120
-            # min_brightness_mask = np.any(min_brightness_mask, axis=2, keepdims=True)
-
-            # brighter_mask = np.logical_and(brighter_mask, min_brightness_mask)
-
-            self.peaking_tresor[brighter_mask] = datacopy[brighter_mask]
-
-        # ------------------------------------------------------------------------------------------------------------------------
-
-        # if not np.array_equal(datacopy, self.peaking_tresor):
-        #     s = np.asarray(self.peaking_tresor, np.uint16)
-        #     # s = np.asarray(s, np.uint16)
-        #     # s *= self.CLIPPING_VALUE
-        #     print(s)
-        #     cv2.imwrite("narf" + ".peaking.jpg", s)
-        #     sys.exit()
-
-        if self.DISPLAY_PEAKING:
-           
-            #plt.imshow(~mask, cmap="Greys", vmin=0, vmax=1)
-
-            s = np.asarray(datacopy, np.uint16)
-            cv2.imwrite(os.path.join(self.RESULT_DIRECTORY, "peaking.jpg"), s)
-
-            #plt.imshow(cv2.cvtColor(s, cv2.COLOR_BGR2RGB))
-            # self._plot(datacopy)
-
-            # plt.show()
-            sys.exit(0)
-
-
-        # if not self.APPLY_CURVE:
-        #     self.peaking_tresor = np.add(self.peaking_tresor, datacopy)
-
-        # if self.APPLY_CURVE:
-        #     multiplier = self.curve[self.counter-1]["inverted_absolute"]
-        #     self.peaking_tresor = np.add(self.peaking_tresor, datacopy * multiplier)
-        #     self.peaking_weighted_average_divider += multiplier
-
-        # self.peaking_tresor = np.add(self.peaking_tresor, datacopy)
-
-
     def _load_image(self, filename, directory=None):
         # read input as 16bit color TIFF or plain JPG
         if directory is not None:
@@ -741,8 +530,7 @@ class Stacker(object):
         text += "transform_image: {transform_image:.3f} | "
         text += "convert_to_array: {convert_to_array:.3f} | "
         text += "curve: {curve:.3f} | "
-        text += "peaking: {peaking:.3f} | "
-        text += "adding: {adding:.3f} | "
+        text += "blending: {blending:.3f} | "
         text += "write_image: {write_image:.3f}"
 
         stopwatch_avg = self.stopwatch.copy()
@@ -751,7 +539,14 @@ class Stacker(object):
         # stopwatch_avg["write_image"] *= self.counter
         # stopwatch_avg["write_image"] /= int(self.counter/self.SAVE_INTERVAL)
 
-        print(status + "\n" + text.format(**stopwatch_avg), end="\r")
+        # print(status + "\n" + text.format(**stopwatch_avg), end="\r")
+
+        self.log.info("processing image {:5d} / {:5d} ({:5.2f}%) | est. remaining: {}".format(
+            self.counter, 
+            len(self.input_images), 
+            (self.counter/len(self.input_images)) * 100,
+            support.Converter().humanReadableSeconds(est_remaining)
+        ))
 
         # print(self.stopwatch)
 
@@ -769,13 +564,13 @@ class Stacker(object):
         skip_processing = False
 
         # check if the image is too dark to care
-        if self.MIN_BRIGHTNESS_THRESHOLD is not None:
+        if self.BLEND_MODE == BLEND_MODE_STACK and self.MIN_BRIGHTNESS_THRESHOLD is not None:
                 
             # value = np.max(im) # brightest pixel
             value = im.mean() # average brightness
 
             if value < self.MIN_BRIGHTNESS_THRESHOLD:
-                print("skipping image: {} (brightness below threshold)".format(f))
+                self.log.debug("skipping image: {} (brightness below threshold)".format(f))
                 skip_processing = True
 
         if not skip_processing:
@@ -808,49 +603,31 @@ class Stacker(object):
             data = np.uint64(np.asarray(im, np.uint64))
             self.stopwatch["convert_to_array"] += self.stop_time()
 
-            if not self.APPLY_CURVE:
-
-                if self.BLEND_MODE:
-                    window_size = int(self.DIMENSIONS[0] / len(self.input_images))
-                    start = 0 + (self.counter-1) * window_size
-                    end = start + window_size
-
-                    if self.counter == len(self.input_images):
-                        end = self.DIMENSIONS[0]-1
-
-                    self.tresor[:, start:end] = data[:, start:end]
-                else:
-                    self.tresor = np.add(self.tresor, data)
-
             if self.APPLY_CURVE:
+
                 multiplier = self.curve[self.counter-1]["inverted_absolute"]
-                # print(multiplier)
-                self.tresor = np.add(self.tresor, data * multiplier)
+                data = data * multiplier
                 self.weighted_average_divider += multiplier
 
-            self.stopwatch["adding"] += self.stop_time()
+            self.stopwatch["curve"] += self.stop_time()
 
-            if self.APPLY_PEAKING:
-                image_brightness = self.curve[self.counter-1]["brightness"]
-                if self.PEAKING_IMAGE_THRESHOLD is None or self.PEAKING_IMAGE_THRESHOLD > image_brightness:
-                    if self.PEAKING_FROM_2ND_IMAGE:
-                        second_image_data = self._load_image(f, directory=os.path.join(self.INPUT_DIRECTORY, "2nd"))
-                        if second_image_data is not None:
+            if self.BLEND_MODE == BLEND_MODE_STACK:
 
-                            if self.ALIGN:
-                                if f not in self.translation_data:
-                                    print("not aligned: translation data missing for {}".format(f))
-                                else:
-                                    second_image_data = self.aligner.transform(second_image_data, np.matrix(self.translation_data[f][0]), second_image_data.shape)
+                self.tresor = np.add(self.tresor, data)
 
-                            self.apply_peaking(second_image_data)
-                        else:
-                            print("2ND IMAGE MISSING {}".format(f))
-                    else:
-                        self.apply_peaking(data)
-                # else: 
-                #     print("image {} skipped for peaking due to threshold ({})".format(f, image_brightness))
-                self.stopwatch["peaking"] += self.stop_time()
+            elif self.BLEND_MODE == BLEND_MODE_PEAK:
+
+                brighter_mask = self.tresor < data 
+                min_brightness_mask = data > 10 #120
+                min_brightness_mask = np.any(min_brightness_mask, axis=2, keepdims=True)
+                brighter_mask = np.logical_and(brighter_mask, min_brightness_mask)
+                self.tresor[brighter_mask] = data[brighter_mask]
+
+            else:   
+                self.log.error("unknown BLEND_MODE: {}".format(self.BLEND_MODE))
+                exit(-1)
+
+            self.stopwatch["blending"] += self.stop_time()
 
         self.stacked_images.append(f)
 
@@ -880,12 +657,6 @@ class Stacker(object):
 
         # self.input_images = self.input_images[:720]
 
-        # print shutter intervals to check for deviations
-        # for i in range(1, len(self.input_images)):
-        #     old = int(self.input_images[i-1][:-6])/1000
-        #     new = int(self.input_images[i][:-6])/1000
-        #     print("{0:3.1f}".format((new-old)/60))
-
         self.starttime = datetime.datetime.now()
         self.timer = datetime.datetime.now()
 
@@ -894,20 +665,20 @@ class Stacker(object):
             pick = pickle.load(open(self.PICKLE_NAME, "rb"))
             self.stacked_images = pick["stacked_images"]
             self.tresor = pick["tresor"]
-            print("pickle loaded. resume with {} images".format(len(stacked_images)))
+            self.log.info("pickle loaded. resume with {} images".format(len(stacked_images)))
         except Exception as e:
-            print(str(e))
+            self.log.error(str(e))
 
         self.stop_time("pickle loading: {0:.3f}{1}")
 
         self.LIMIT = len(self.input_images)
 
         if self.LIMIT <= 0:
-            print("no images found. exit.")
+            self.log.error("no images found. exit.")
             sys.exit(-1)
 
         self.stop_time("searching for files: {0:.3f}{1}")
-        print("number of images: {}".format(self.LIMIT))
+        self.log.info("number of images: {}".format(self.LIMIT))
 
         if self.WRITE_METADATA:
             self.metadata = self.read_metadata(self.input_images)
@@ -917,9 +688,6 @@ class Stacker(object):
             self.DIMENSIONS = (shape[1], shape[0])
 
         self.tresor = np.zeros((self.DIMENSIONS[1], self.DIMENSIONS[0], 3), dtype=np.uint64)
-
-        if self.APPLY_PEAKING:
-            self.peaking_tresor = np.zeros((self.DIMENSIONS[1], self.DIMENSIONS[0], 3), dtype=np.uint64)
         
         self.stop_time("initialization: {0:.3f}{1}")
 
@@ -937,7 +705,7 @@ class Stacker(object):
             self.display_curve(self.curve)
 
         if self.ALIGN:
-            print("translation data: {}".format(self.aligner.TRANSLATION_DATA))
+            self.log.debug("translation data: {}".format(self.aligner.TRANSLATION_DATA))
             self.translation_data = json.load(open(self.aligner.TRANSLATION_DATA, "r"))
 
         # for item in self.curve:
@@ -951,10 +719,10 @@ class Stacker(object):
             try:
                 self.process(f)
             except Exception as e:
-                print("ERROR in image: {}".format(f))
+                self.log.error("ERROR in image: {}".format(f))
                 raise(e)
 
         filepath = self.save(fixed_name=self.FIXED_OUTPUT_NAME)
 
-        print("finished. time total: {}".format(datetime.datetime.now() - self.starttime))
+        self.log.info("finished. time total: {}".format(datetime.datetime.now() - self.starttime))
         sys.exit(0)

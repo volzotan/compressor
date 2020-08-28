@@ -2,10 +2,10 @@
 
 # from aligner import Aligner
 # from stitcher import Stitcher
-from stacker import Stacker
+import stacker
 
 import argparse
-from gooey import Gooey
+from gooey import Gooey, GooeyParser
 
 import os
 import sys
@@ -17,30 +17,22 @@ import numpy as np
 
 import config
 
+import logging as log
+
 
 def print_config():
     pass
 
 
-def path_check_and_expand(path):
-    if not (path.startswith("/") or path.startswith("~")):
-        path = os.path.join(BASE_DIR, path)
-
-    if path.startswith("~"):
-        path = os.path.expanduser(path)
-
-    return path
-
-
 def create_if_not_existing(path):
     if not os.path.exists(path):
-        print("created directoy: {}".format(path))
+        log.debug("created directoy: {}".format(path))
         os.makedirs(path)
 
 
 def abort_if_missing(path):
     if not os.path.exists(path):
-        print("dir not found: {}".format(support.Color.BOLD + path + support.Color.END))
+        log.error("dir not found: {}".format(support.Color.BOLD + path + support.Color.END))
         sys.exit(-1)
 
 
@@ -73,7 +65,7 @@ def get_all_file_names(input_dir):
             file_list.append(f)
 
         if counter > 0:
-            print("skipped {} files during parsing of directory {}".format(counter, input_dir))
+            log.debug("skipped {} files during parsing of directory {}".format(counter, input_dir))
 
         return file_list
 
@@ -90,19 +82,19 @@ def get_all_file_names(input_dir):
             if f.lower().endswith(".tif"):
                 file_list_tif.append(f)
 
-        print("Extension autodetection: {} JPGs, {} TIFs found.".format(len(file_list_jpg), len(file_list_tif)))
+        log.debug("Extension autodetection: {} JPGs, {} TIFs found.".format(len(file_list_jpg), len(file_list_tif)))
 
         if (len(file_list_jpg) > 0 and len(file_list_jpg) >= len(file_list_tif)):
-            print("Extension autodetection: JPG choosen")
+            log.debug("Extension autodetection: JPG choosen")
             config.EXTENSION = ".jpg"
             return file_list_jpg
 
         if (len(file_list_tif) > 0 and len(file_list_tif) >= len(file_list_jpg)):
-            print("Extension autodetection: TIF choosen")
+            log.debug("Extension autodetection: TIF choosen")
             config.EXTENSION = ".tif"
             return file_list_tif
 
-        print("Extension autodetection failed")
+        log.warning("Extension autodetection failed")
     
     return []
 
@@ -137,137 +129,214 @@ def _sort_helper(value):
 
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
-parser = argparse.ArgumentParser(description="Stack several image files to create digital long exposure photographies")
+gooey_options = {
+    "program_name": "Compressor",
+    "description":  "Merge images to create digital long exposure photographies",
 
-parser.add_argument("--input-dir", help="directory containing all input images")
+}
 
-# parser.add_argument("--align", action="store_true", help="run only the aligner, do not compress")
-# parser.add_argument("--transform", action="store_true", help="run only the aligner and transform, do not compress")
-# parser.add_argument("--stitch", action="store_true", help="stitch images for panoramic formats")
-args = parser.parse_args()
+# @Gooey(**gooey_options)
+def main():
 
-# --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
+    # parser = argparse.ArgumentParser(description="Stack images to create digital long exposure photographies")
+    parser = GooeyParser()
 
-stacker = Stacker(aligner)
-input_images_stacker = []
+    parser.add_argument(
+        "--verbose", 
+        action="store_true",
+        help="detailed output messages"
+    )
 
-# transform to absolute paths
-BASE_DIR = os.path.dirname(os.path.realpath(__file__))
+    # subs = parser.add_subparsers(help='commands', dest='command')
 
-# --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
+    # stack_parser = subs.add_parser("stack", help="compress correctly exposed images for a single long exposure image")
+    # peak_parser = subs.add_parser("peak", help="peak underexposed images for a single long sun-arc image")
 
-# expand all paths
-for directory in config.DIRS_TO_EXPAND_STACKER:
-    variable = getattr(config, directory)
-    if variable is None:
-        print("warning: variable {} empty. not expanded".format(directory))
-        continue
-    setattr(config, directory, path_check_and_expand(variable))
+    # stack_parser.add_argument(
+    #     "input-dir", 
+    #     widget="DirChooser",
+    #     help="directory containing all input images"
+    # )
 
-for directory in config.DIRS_TO_CREATE_STACKER:
-    variable = getattr(config, directory)
-    create_if_not_existing(variable)
+    # stack_parser.add_argument(
+    #     "output-dir", 
+    #     widget="DirChooser",
+    #     help="output directory for results"
+    # )
+   
+    # peak_parser.add_argument(
+    #     "input-dir", 
+    #     widget="DirChooser",
+    #     help="directory containing all input images"
+    # )
 
-for directory in config.DIRS_ABORT_IF_MISSING_STACKER:
-    variable = getattr(config, directory)
-    abort_if_missing(variable)
+    # peak_parser.add_argument(
+    #     "output-dir", 
+    #     widget="DirChooser",
+    #     help="output directory for results"
+    # )
+   
+    parser.add_argument(
+        "blendmode",
+        default=stacker.BLEND_MODE_STACK,
+        choices=[stacker.BLEND_MODE_STACK, stacker.BLEND_MODE_PEAK], 
+        help="blend mode"
+    )
 
-input_images_stacker = get_all_file_names(config.INPUT_DIR_STACKER)
+    parser.add_argument(
+        "inputdir", 
+        default=".",
+        widget="DirChooser",
+        help="directory containing all input images"
+    )
 
-# min size
+    parser.add_argument(
+        "--outputdir", 
+        widget="DirChooser",
+        help="output directory for results"
+    )
 
-num_skipped = 0
-input_images_stacker_nonempty = []
-for img in input_images_stacker:
-    if os.path.getsize(os.path.join(config.INPUT_DIR_STACKER, img)) < 100:
-        num_skipped += 1
+    args = parser.parse_args()
+
+    # initialize logger
+
+    logger = log.getLogger() 
+    logger.setLevel(log.DEBUG)
+
+    log.basicConfig(level=log.DEBUG)
+    #                     format="%(asctime)s | %(levelname)-7s | %(message)s",
+    #                     datefmt='%m-%d %H:%M',
+    # )
+
+    # formatter = log.Formatter("%(asctime)s | %(levelname)-7s | %(message)s")
+    # consoleHandler = log.StreamHandler()
+    # consoleHandler.setLevel(log.DEBUG)
+    # consoleHandler.setFormatter(formatter)
+    # logger.addHandler(consoleHandler)
+
+    # subloggers
+    ezdxf_logger = log.getLogger("exifread").setLevel(log.WARN)
+
+    root = log.getLogger()
+    root_handler = root.handlers[0]
+    formatter = log.Formatter("%(asctime)s | %(name)-10s | %(levelname)-7s | %(message)s")
+    root_handler.setFormatter(formatter)
+
+    # ---
+
+    stack = stacker.Stack(None)
+    input_images_stack = []
+
+    # transform to absolute paths
+    BASE_DIR = os.path.dirname(os.path.realpath(__file__))
+
+    # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
+
+    if args.outputdir is None:
+        args.outputdir = args.inputdir + "_stacked"
+
+    for directory in [args.inputdir]:
+        abort_if_missing(directory)
+
+    for directory in [args.outputdir]:
+        create_if_not_existing(directory)
+
+    input_images_stack = get_all_file_names(args.inputdir)
+
+    # min size
+
+    num_skipped = 0
+    input_images_stack_nonempty = []
+    for img in input_images_stack:
+        if os.path.getsize(os.path.join(args.inputdir, img)) < 100:
+            num_skipped += 1
+        else:
+            input_images_stack_nonempty.append(img)
+    input_images_stack = input_images_stack_nonempty
+    log.info("skipped {} images smaller than 100 bytes".format(num_skipped))
+
+    # missing second image
+
+    # num_skipped = 0
+    # input_images_stack_nonempty = []
+    # for img in input_images_stack:
+    #     if img.lower().endswith("_2.jpg") or img.lower().endswith("_2.tif"):
+    #         num_skipped += 1
+    #     else:
+    #         input_images_stack_nonempty.append(img)
+    # input_images_stack = input_images_stack_nonempty
+    # print("skipped {} peaking images (suffix _2.EXTENSION)".format(num_skipped))
+
+    # min brightness
+
+    # if config.MIN_BRIGHTNESS_THRESHOLD is not None:
+    #     num_skipped = 0
+    #     input_images_stack_nonempty = []
+    #     for img in input_images_stack:
+
+    #         im = cv2.imread(os.path.join(config.INPUT_DIR_STACKER, img), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH) 
+            
+    #         # value = np.max(im) # brightest pixel
+    #         value = im.mean() # average brightness
+
+    #         if value < config.MIN_BRIGHTNESS_THRESHOLD:
+    #             num_skipped += 1
+    #         else:
+    #             input_images_stack_nonempty.append(img)
+
+    #         # print("{} - {}".format(img, im.mean()))
+    #         # exit()
+
+    #     input_images_stack = input_images_stack_nonempty
+    #     print("skipped {} images darker than {}".format(num_skipped, config.MIN_BRIGHTNESS_THRESHOLD))
+
+    if len(input_images_stack) == 0:
+        log.error("no input images found. exiting...")
+        exit(0)
+
+    # sort
+
+    if config.SORT_IMAGES:
+        input_images_stack = sorted(input_images_stack, key=_sort_helper)
+
+    # debug file sorting: 
+    # print(*input_images_stack, sep="\n")
+    # exit()
+
+    stack.NAMING_PREFIX                 = config.NAMING_PREFIX
+    stack.INPUT_DIRECTORY               = args.inputdir
+    stack.RESULT_DIRECTORY              = args.outputdir
+
+    if config.FIXED_OUTPUT_NAME.endswith(config.EXTENSION):
+        stack.FIXED_OUTPUT_NAME         = config.FIXED_OUTPUT_NAME
     else:
-        input_images_stacker_nonempty.append(img)
-input_images_stacker = input_images_stacker_nonempty
-print("skipped {} images smaller than 100 bytes".format(num_skipped))
+        stack.FIXED_OUTPUT_NAME         = config.FIXED_OUTPUT_NAME + config.EXTENSION
 
-# missing second image
+    stack.BASE_DIR                      = BASE_DIR
+    stack.EXTENSION                     = config.EXTENSION
+    stack.PICKLE_NAME                   = config.PICKLE_NAME
 
-num_skipped = 0
-input_images_stacker_nonempty = []
-for img in input_images_stacker:
-    if img.lower().endswith("_2.jpg") or img.lower().endswith("_2.tif"):
-        num_skipped += 1
-    else:
-        input_images_stacker_nonempty.append(img)
-input_images_stacker = input_images_stacker_nonempty
-print("skipped {} peaking images (suffix _2.EXTENSION)".format(num_skipped))
+    stack.BLEND_MODE                    = args.blendmode
 
-# min brightness
+    stack.ALIGN                         = config.ALIGN
 
-# if config.MIN_BRIGHTNESS_THRESHOLD is not None:
-#     num_skipped = 0
-#     input_images_stacker_nonempty = []
-#     for img in input_images_stacker:
+    if config.ALIGN:
+        aligner.TRANSLATION_DATA        = config.TRANSLATION_DATA
 
-#         im = cv2.imread(os.path.join(config.INPUT_DIR_STACKER, img), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH) 
-        
-#         # value = np.max(im) # brightest pixel
-#         value = im.mean() # average brightness
+    stack.MIN_BRIGHTNESS_THRESHOLD      = config.MIN_BRIGHTNESS_THRESHOLD
 
-#         if value < config.MIN_BRIGHTNESS_THRESHOLD:
-#             num_skipped += 1
-#         else:
-#             input_images_stacker_nonempty.append(img)
+    stack.DISPLAY_CURVE                 = config.DISPLAY_CURVE
+    stack.APPLY_CURVE                   = config.APPLY_CURVE
 
-#         # print("{} - {}".format(img, im.mean()))
-#         # exit()
+    stack.WRITE_METADATA                = config.WRITE_METADATA
 
-#     input_images_stacker = input_images_stacker_nonempty
-#     print("skipped {} images darker than {}".format(num_skipped, config.MIN_BRIGHTNESS_THRESHOLD))
+    stack.SAVE_INTERVAL                 = config.SAVE_INTERVAL
+    stack.INTERMEDIATE_SAVE_FORCE_JPEG  = config.INTERMEDIATE_SAVE_FORCE_JPEG
+    stack.PICKLE_INTERVAL               = config.PICKLE_INTERVAL
 
-# sort
+    stack.post_init()
+    stack.print_config()
+    stack.run(input_images_stack)
 
-if config.SORT_IMAGES:
-    input_images_stacker = sorted(input_images_stacker, key=_sort_helper)
-
-# debug file sorting: 
-# print(*input_images_stacker, sep="\n")
-# exit()
-
-stacker.NAMING_PREFIX               = config.NAMING_PREFIX
-stacker.INPUT_DIRECTORY             = config.INPUT_DIR_STACKER
-stacker.RESULT_DIRECTORY            = config.OUTPUT_DIR_STACKER
-
-if config.FIXED_OUTPUT_NAME.endswith(config.EXTENSION):
-    stacker.FIXED_OUTPUT_NAME       = config.FIXED_OUTPUT_NAME
-else:
-    stacker.FIXED_OUTPUT_NAME       = config.FIXED_OUTPUT_NAME + config.EXTENSION
-
-stacker.BASE_DIR                    = BASE_DIR
-stacker.EXTENSION                   = config.EXTENSION
-stacker.PICKLE_NAME                 = config.PICKLE_NAME
-
-stacker.ALIGN                       = config.ALIGN
-
-if config.ALIGN:
-    aligner.TRANSLATION_DATA        = config.TRANSLATION_DATA
-
-stacker.MIN_BRIGHTNESS_THRESHOLD    = config.MIN_BRIGHTNESS_THRESHOLD
-
-stacker.DISPLAY_CURVE               = config.DISPLAY_CURVE
-stacker.APPLY_CURVE                 = config.APPLY_CURVE
-
-stacker.DISPLAY_PEAKING             = config.DISPLAY_PEAKING
-stacker.APPLY_PEAKING               = config.APPLY_PEAKING
-stacker.PEAKING_STRATEGY            = config.PEAKING_STRATEGY
-stacker.PEAKING_FROM_2ND_IMAGE      = config.PEAKING_FROM_2ND_IMAGE 
-stacker.PEAKING_IMAGE_THRESHOLD     = config.PEAKING_IMAGE_THRESHOLD
-stacker.PEAKING_BLEND               = config.PEAKING_BLEND
-stacker.PEAKING_PIXEL_THRESHOLD     = config.PEAKING_PIXEL_THRESHOLD
-stacker.PEAKING_MUL_FACTOR          = config.PEAKING_MUL_FACTOR
-
-stacker.WRITE_METADATA              = config.WRITE_METADATA
-
-stacker.SAVE_INTERVAL               = config.SAVE_INTERVAL
-stacker.INTERMEDIATE_SAVE_FORCE_JPEG = config.INTERMEDIATE_SAVE_FORCE_JPEG
-stacker.PICKLE_INTERVAL             = config.PICKLE_INTERVAL
-
-stacker.post_init()
-stacker.print_config()
-stacker.run(input_images_stacker)
+if __name__ == "__main__":
+    main()
