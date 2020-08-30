@@ -13,7 +13,7 @@ import math
 from fractions import Fraction
 
 from PIL import Image
-import cv2
+# import cv2
 import numpy as np
 from scipy.ndimage.filters import gaussian_filter
 from skimage import color
@@ -120,8 +120,7 @@ class Stack(object):
             "load_image": 0,
             "transform_image": 0,
             "convert_to_array": 0,
-            "curve": 0,
-            "blending": 0,
+            "stacking": 0,
             "write_image": 0
         }
 
@@ -223,7 +222,9 @@ class Stack(object):
 
         # convert to uint16 for saving, 0.5s faster than usage of t.astype(np.uint16)
         s = np.asarray(t, np.uint16)
-        cv2.imwrite(filepath, s)
+
+        # cv2.imwrite(filepath, s)
+        Image.fromarray(s).save(filepath)
 
         if self.WRITE_METADATA:
             self.write_metadata(filepath, self.metadata)
@@ -296,8 +297,8 @@ class Stack(object):
             return info
 
 
-    # def write_metadata_gexiv(self, filepath, info):
-    def write_metadata(self, filepath, info):
+    def write_metadata_gexiv(self, filepath, info):
+    # def write_metadata(self, filepath, info):
 
         metadata = GExiv2.Metadata()
         metadata.open_path(filepath)
@@ -329,7 +330,8 @@ class Stack(object):
         # print("metadata written to {}".format(filepath))
 
 
-    # def write_metadata(self, filepath, info):
+    def write_metadata(self, filepath, info):
+        raise Exception()
 
     #     metadata = GExiv2.Metadata()
     #     metadata.open_path(filepath)
@@ -477,8 +479,10 @@ class Stack(object):
             image_path = os.path.join(directory, filename)
         else:
             image_path = filename
+
         # no faster method found for TIF images (tested: PIL, imageio, libtiff) 
-        return cv2.imread(image_path, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH) 
+        # return cv2.imread(image_path, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH) 
+        return np.asarray(Image.open(image_path))
 
 
     def stop_time(self, msg=None):
@@ -498,10 +502,10 @@ class Stack(object):
         self.timer = datetime.datetime.now()
 
 
-    def _plot(self, mat):
-        # plot a numpy array with matplotlib
-        plt.imshow(cv2.bitwise_not(cv2.cvtColor(np.asarray(mat, np.uint16), cv2.COLOR_RGB2BGR)), interpolation="nearest")
-        plt.show()
+    # def _plot(self, mat):
+    #     # plot a numpy array with matplotlib
+    #     plt.imshow(cv2.bitwise_not(cv2.cvtColor(np.asarray(mat, np.uint16), cv2.COLOR_RGB2BGR)), interpolation="nearest")
+    #     plt.show()
 
 
     def print_info(self):
@@ -529,8 +533,7 @@ class Stack(object):
         text =  "load_image: {load_image:.3f} | "
         text += "transform_image: {transform_image:.3f} | "
         text += "convert_to_array: {convert_to_array:.3f} | "
-        text += "curve: {curve:.3f} | "
-        text += "blending: {blending:.3f} | "
+        text += "stacking: {stacking:.3f} | "
         text += "write_image: {write_image:.3f}"
 
         stopwatch_avg = self.stopwatch.copy()
@@ -603,15 +606,12 @@ class Stack(object):
             data = np.uint64(np.asarray(im, np.uint64))
             self.stopwatch["convert_to_array"] += self.stop_time()
 
-            if self.APPLY_CURVE:
-
-                multiplier = self.curve[self.counter-1]["inverted_absolute"]
-                data = data * multiplier
-                self.weighted_average_divider += multiplier
-
-            self.stopwatch["curve"] += self.stop_time()
-
             if self.BLEND_MODE == BLEND_MODE_STACK:
+
+                if self.APPLY_CURVE:
+                    multiplier = self.curve[self.counter-1]["inverted_absolute"]
+                    data = data * multiplier
+                    self.weighted_average_divider += multiplier
 
                 self.tresor = np.add(self.tresor, data)
 
@@ -627,7 +627,7 @@ class Stack(object):
                 self.log.error("unknown BLEND_MODE: {}".format(self.BLEND_MODE))
                 exit(-1)
 
-            self.stopwatch["blending"] += self.stop_time()
+            self.stopwatch["stacking"] += self.stop_time()
 
         self.stacked_images.append(f)
 
@@ -684,7 +684,8 @@ class Stack(object):
             self.metadata = self.read_metadata(self.input_images)
 
         if self.DIMENSIONS is None:
-            shape = cv2.imread(os.path.join(self.INPUT_DIRECTORY, self.input_images[0])).shape
+            # cv2.imread(os.path.join(self.INPUT_DIRECTORY, self.input_images[0])).shape
+            shape = self._load_image(self.input_images[0], directory=self.INPUT_DIRECTORY).shape
             self.DIMENSIONS = (shape[1], shape[0])
 
         self.tresor = np.zeros((self.DIMENSIONS[1], self.DIMENSIONS[0], 3), dtype=np.uint64)

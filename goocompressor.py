@@ -12,7 +12,7 @@ import sys
 import support
 import yaml
 
-import cv2
+# import cv2
 import numpy as np
 
 import config
@@ -130,12 +130,13 @@ def _sort_helper(value):
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
 gooey_options = {
-    "program_name": "Compressor",
-    "description":  "Merge images to create digital long exposure photographies",
-
+    "program_name":     "Compressor",
+    "description":      "Merge images to create digital long exposure photographies",
+    "progress_regex":   r"processing image[\ ]*(?P<current>\d+) \/[\ ]*(?P<total>\d+)",
+    "progress_expr":    "current / total * 100"
 }
 
-# @Gooey(**gooey_options)
+@Gooey(**gooey_options)
 def main():
 
     # parser = argparse.ArgumentParser(description="Stack images to create digital long exposure photographies")
@@ -216,6 +217,7 @@ def main():
 
     # subloggers
     ezdxf_logger = log.getLogger("exifread").setLevel(log.WARN)
+    ezdxf_logger = log.getLogger("PIL").setLevel(log.WARN)
 
     root = log.getLogger()
     root_handler = root.handlers[0]
@@ -233,7 +235,12 @@ def main():
     # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
     if args.outputdir is None:
-        args.outputdir = args.inputdir + "_stacked"
+        if args.blendmode == stacker.BLEND_MODE_STACK:
+            args.outputdir = args.inputdir + "_stacked"
+        elif args.blendmode == stacker.BLEND_MODE_PEAK:
+            args.outputdir = args.inputdir + "_peaked"
+        else:
+            args.outputdir = args.inputdir + "_undefined" 
 
     for directory in [args.inputdir]:
         abort_if_missing(directory)
