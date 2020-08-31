@@ -53,6 +53,10 @@ from gi.repository import GExiv2
 BLEND_MODE_STACK                = "stack"
 BLEND_MODE_PEAK                 = "peak"
 
+DEFAULT_APERTURE                = 8.0
+EV_OFFSET                       = 26
+
+
 class Stopwatch(object):
 
     def __init__(self):
@@ -297,8 +301,7 @@ class Stack(object):
             return info
 
 
-    def write_metadata_gexiv(self, filepath, info):
-    # def write_metadata(self, filepath, info):
+    def write_metadata(self, filepath, info):
 
         metadata = GExiv2.Metadata()
         metadata.open_path(filepath)
@@ -330,8 +333,8 @@ class Stack(object):
         # print("metadata written to {}".format(filepath))
 
 
-    def write_metadata(self, filepath, info):
-        raise Exception()
+    # def write_metadata(self, filepath, info):
+    #     raise Exception()
 
     #     metadata = GExiv2.Metadata()
     #     metadata.open_path(filepath)
@@ -345,6 +348,7 @@ class Stack(object):
 
     def _intensity(self, shutter, aperture, iso):
 
+        # homebrew scene brightness metric (rather use EV with offset)
         # limits in this calculations:
         # min shutter is 1/4000th second
 
@@ -366,12 +370,12 @@ class Stack(object):
         return shutter_repr + aperture_repr + iso_repr
 
 
-    def _luminosity(self, image):
-        return 0
+    def _exposure_value(self, shutter, aprture, iso):
+        
+        ev = math.log(aperture / shutter, 2) - math.log(iso/100, 2)
+        ev += EV_OFFSET
 
-        # TODO: check for broken image?
-        #im = cv2.imread(os.path.join(self.INPUT_DIRECTORY, f), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
-        #luma = 0.2126 * R + 0.7152 * G + 0.0722 * B
+        return ev
 
 
     def calculate_brightness_curve(self, images):
@@ -410,11 +414,12 @@ class Stack(object):
             time = datetime.datetime.strptime(time, self.EXIF_DATE_FORMAT)
 
             aperture = metadata.get_focal_length()
-            if aperture < 0:
+            if aperture is None or aperture < 0:
                 # no aperture tag set, probably an lens adapter was used. assume fixed aperture.
-                aperture = None
+                aperture = DEFAULT_APERTURE
 
-            values.append((image, time, self._intensity(shutter, aperture, iso), self._luminosity(image)))
+            # values.append((image, time, self._intensity(shutter, aperture, iso), self._luminosity(image)))
+            values.append((image, time, self._ecposure_value(shutter, aperture, iso)))
 
         # normalize
         intensities = [x[2] for x in values]
