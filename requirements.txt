@@ -4,3 +4,6 @@ scikit-image
 exifread
 matplotlib
 pyyaml
+
+gooey
+pyinstaller

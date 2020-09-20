@@ -15,16 +15,9 @@ from fractions import Fraction
 from PIL import Image
 # import cv2
 import numpy as np
-from scipy.ndimage.filters import gaussian_filter
-from skimage import color
 import matplotlib.pyplot as plt
 
 import exifread
-
-import gi
-gi.require_version('GExiv2', '0.10')
-from gi.repository import GExiv2
-
 
 """
     Stacker loads every image in INPUT_DIRECTORY,
@@ -136,6 +129,16 @@ class Stack(object):
         self.log.setLevel(logging.DEBUG)
         self.log.debug("init")
 
+        if self.WRITE_METADATA:
+            
+            try:
+                import gi
+                gi.require_version('GExiv2', '0.10')
+                from gi.repository import GExiv2
+            except Exception as e:
+                self.log.error("Importing Exiv2 failed. No metadata can be written. Error: {}".format(e))
+                self.WRITE_METADATA = False
+
 
     """
     After the class variables have been overwritten with the config from the compressor.py script,
@@ -225,7 +228,10 @@ class Stack(object):
                 t = t / (self.counter)
 
         # convert to uint16 for saving, 0.5s faster than usage of t.astype(np.uint16)
-        s = np.asarray(t, np.uint16)
+        if self.EXTENSION == ".tif":
+            s = np.asarray(t, np.uint16)
+        else:
+            s = np.asarray(t, np.uint8)
 
         # cv2.imwrite(filepath, s)
         Image.fromarray(s).save(filepath)
@@ -312,8 +318,6 @@ class Stack(object):
         key = "Exif.Image.ProcessingSoftware";  metadata.set_tag_string(key, compressor_name)
         key = "Exif.Image.Software";            metadata.set_tag_string(key, compressor_name)
 
-        key = "Exif.Image.Artist";              metadata.set_tag_string(key, "Christopher Getschmann")
-        key = "Exif.Image.Copyright";           metadata.set_tag_string(key, "CreativeCommons BY-NC 4.0")
         try:
             key = "Exif.Image.ExposureTime";    metadata.set_exif_tag_rational(key, info["exposure_time"], 1)
         except Exception as e:
@@ -330,20 +334,7 @@ class Stack(object):
         # TODO GPS Location
 
         metadata.save_file(filepath)
-        # print("metadata written to {}".format(filepath))
-
-
-    # def write_metadata(self, filepath, info):
-    #     raise Exception()
-
-    #     metadata = GExiv2.Metadata()
-    #     metadata.open_path(filepath)
-
-    #     exif_dict = piexif.load(path)
-    #     new_exif = adjust_exif(exif_dict)
-    #     exif_bytes = piexif.dump(new_exif)
-    #     piexif.insert(exif_bytes, path)
-
+        self.log.debug("metadata written to {}".format(filepath))
 
 
     def _intensity(self, shutter, aperture, iso):
@@ -370,10 +361,16 @@ class Stack(object):
         return shutter_repr + aperture_repr + iso_repr
 
 
-    def _exposure_value(self, shutter, aprture, iso):
+    def _exposure_value(self, shutter, aperture, iso):
         
         ev = math.log(aperture / shutter, 2) - math.log(iso/100, 2)
+
+        # self.log.error("EV: {:5.2f}".format(ev))
+
         ev += EV_OFFSET
+
+        if ev < 1:
+            self.log.warning("EV value below zero ({}). offset to low.".format(ev))
 
         return ev
 
@@ -382,44 +379,59 @@ class Stack(object):
         values = []
 
         for image in images:
-            metadata = GExiv2.Metadata()
-            metadata.open_path(os.path.join(self.INPUT_DIRECTORY, image))
 
-            shutter = metadata.get_exposure_time()
-            if shutter[0] == 0 and shutter[1] == 0:
-                print("EXIF data missing for image: {}".format(image))
-                sys.exit(-1)
-            try:
-                shutter = float(shutter)
-            except TypeError as e:
-                if (shutter[1] != 0):
-                    shutter = shutter[0] / shutter[1]
+            with open(os.path.join(self.INPUT_DIRECTORY, image), "rb") as f:
+                metadata = exifread.process_file(f)
+
+                try:
+                    shutter = metadata["EXIF ExposureTime"].values
+                    if type(shutter) is list and type(shutter[0]) is exifread.utils.Ratio:
+                        shutter = shutter[0].num / shutter[0].den
+                    elif shutter[0] == 0 and shutter[1] == 0:
+                        raise Exception("Shutter is 0/0")
+                    else:
+                        shutter = float(shutter)
+                except Exception as e:
+                    self.log.error("EXIF data missing for image: {} (error: {})".format(image, e))
+                    sys.exit(-1)
+
+                iso = metadata["EXIF ISOSpeedRatings"].values[0]
+                if iso is not None:
+                    iso = int(iso)
                 else:
-                    shutter = shutter[0]
+                    iso = 100 
 
-            iso = metadata.get_tag_string("Exif.Photo.ISOSpeedRatings");
-            if iso is not None:
-                iso = int(iso)
-            else:
-                iso = 100 
+                capturetime = metadata["EXIF DateTimeOriginal"].values
+                if capturetime is None:
+                    capturetime = metadata["Image DateTime"]
+                    if capturetime is None:
+                        # TODO: evil hack
+                        # if image.endswith("_0" + self.EXTENSION):
+                        #     capturetime = datetime.datetime.fromtimestamp(int(image[:-6])/1000).strftime(self.EXIF_DATE_FORMAT)
+                        raise Exception("time exif data missing. no brightness curve can be calculated (well it could, but time data is required for the graph")    
+                capturetime = datetime.datetime.strptime(capturetime, self.EXIF_DATE_FORMAT)
 
-            time = metadata.get_tag_string("Exif.Photo.DateTimeOriginal")
-            if time is None:
-                time = metadata.get_tag_string("Exif.Image.DateTime")
-                if time is None:
-                    # TODO: evil hack
-                    # if image.endswith("_0" + self.EXTENSION):
-                    #     time = datetime.datetime.fromtimestamp(int(image[:-6])/1000).strftime(self.EXIF_DATE_FORMAT)
-                    raise Exception("time exif data missing. no brightness curve can be calculated (well it could, but time data is required for the graph")    
-            time = datetime.datetime.strptime(time, self.EXIF_DATE_FORMAT)
+                aperture = metadata["EXIF FocalLength"].values
+                if type(aperture) is list:
+                    if type(aperture[0]) is exifread.utils.Ratio:
+                        aperture = aperture[0].num / aperture[0].den
+                    else: 
+                        aperture = aperture[0] / aperture[1]
+                elif aperture is None or aperture < 0:
+                    # no aperture tag set, probably an lens adapter was used. assume fixed aperture.
+                    aperture = DEFAULT_APERTURE
+                else:
+                    self.log.warning("unexpected EXIF value for aperture: {}".format(aperture))
+                    aperture = DEFAULT_APERTURE
 
-            aperture = metadata.get_focal_length()
-            if aperture is None or aperture < 0:
-                # no aperture tag set, probably an lens adapter was used. assume fixed aperture.
-                aperture = DEFAULT_APERTURE
+                # values.append((image, capturetime, self._intensity(shutter, aperture, iso), self._luminosity(image)))
+                values.append((image, capturetime, self._exposure_value(shutter, aperture, iso)))
 
-            # values.append((image, time, self._intensity(shutter, aperture, iso), self._luminosity(image)))
-            values.append((image, time, self._ecposure_value(shutter, aperture, iso)))
+                print("{} | {} || {}".format(
+                    self._exposure_value(shutter, aperture, iso), 
+                    self._intensity(shutter, aperture, iso), 
+                    self._exposure_value(shutter, aperture, iso)-self._intensity(shutter, aperture, iso))
+                )
 
         # normalize
         intensities = [x[2] for x in values]
@@ -435,9 +447,9 @@ class Stack(object):
 
             image_name                  = values[i][0]
             time                        = values[i][1]
-            relative_brightness_value   = np.interp(values[i][2], [min_intensity, max_intensity], [1, 0]) # range [0;1]
-            inverted_absolute_value     = np.interp(values[i][2], [min_intensity, max_intensity], [max_intensity, min_intensity])
-            luminosity_value            = values[i][3]
+            relative_brightness_value   = np.interp(values[i][2], [min_intensity, max_intensity], [0, 1])
+            # inverted_absolute_value     = np.interp(values[i][2], [min_intensity, max_intensity], [max_intensity, min_intensity])
+            # luminosity_value            = values[i][3]
 
             # right now the inverted absolute brightness, which is used for the weighted curve calculation,
             # is quite a large number. Usually around 20. (but every image is multiplied with it's respective value,
@@ -452,22 +464,21 @@ class Stack(object):
             curve.append({
                 "image_name": image_name, 
                 "time": time, 
-                "brightness": values[i][2],                         # measure how much light the camera needed to block (lower means scene was brighter)
-                "relative_brightness": relative_brightness_value,   # relative inverted brightness (0: darkest scene, 1: brightest scene)
-                "inverted_absolute": 2**inverted_absolute_value,    # absolute inverted brightness (min: darkest scene, max: brightest scene)
-                "luminosity": luminosity_value                      # 
+                "EV": values[i][2],                                 # measure how much light the camera needed (exposure value, lower means darker)
+                "relative_brightness": relative_brightness_value,   # relative brightness (0: darkest scene, 1: brightest scene)
+                "absolute_brightness": 2**values[i][2]              # absolute brightness (min: darkest scene, max: brightest scene)
             })
 
-        relative_brightnesses = [x["relative_brightness"] for x in curve]
-        self.curve_avg = sum(relative_brightnesses) / float(len(relative_brightnesses))
+        absolute_brightnesses = [x["absolute_brightness"] for x in curve]
+        self.curve_avg = sum(absolute_brightnesses) / float(len(absolute_brightnesses))
 
         return curve
 
 
     def display_curve(self, curve):
         dates = [i["time"] for i in curve]
-        values_exif = [i["inverted_absolute"] for i in curve]
-        values_luminosity = [i["luminosity"] for i in curve]
+        values_exif = [i["absolute_brightness"] for i in curve]
+        values_luminosity = [i["EV"] for i in curve]
 
         # print(values_exif)
 
@@ -556,6 +567,9 @@ class Stack(object):
             support.Converter().humanReadableSeconds(est_remaining)
         ))
 
+        for h in self.log.handlers:
+            h.flush()
+
         # print(self.stopwatch)
 
     # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
@@ -614,7 +628,7 @@ class Stack(object):
             if self.BLEND_MODE == BLEND_MODE_STACK:
 
                 if self.APPLY_CURVE:
-                    multiplier = self.curve[self.counter-1]["inverted_absolute"]
+                    multiplier = self.curve[self.counter-1]["absolute_brightness"]
                     data = data * multiplier
                     self.weighted_average_divider += multiplier
 

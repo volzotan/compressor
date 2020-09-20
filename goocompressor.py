@@ -3,25 +3,25 @@
 # from aligner import Aligner
 # from stitcher import Stitcher
 import stacker
+import config
 
-import argparse
-from gooey import Gooey, GooeyParser
+# import argparse
+from gooey import Gooey, GooeyParser, local_resource_path
 
 import os
 import sys
 import support
 import yaml
 
-# import cv2
-import numpy as np
-
-import config
-
 import logging as log
 
+def blockstring_to_string(s):
 
-def print_config():
-    pass
+    # s = s.replace("\n", "")
+    # s = s.replace("\r", "")
+    # return s
+
+    return " ".join(s.split())
 
 
 def create_if_not_existing(path):
@@ -130,10 +130,13 @@ def _sort_helper(value):
 # --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 
 gooey_options = {
-    "program_name":     "Compressor",
-    "description":      "Merge images to create digital long exposure photographies",
-    "progress_regex":   r"processing image[\ ]*(?P<current>\d+) \/[\ ]*(?P<total>\d+)",
-    "progress_expr":    "current / total * 100"
+    "program_name":         "Compressor",
+    "description":          "Merge images to create digital long exposure photographies",
+    "required_cols":        1,
+    "show_stop_warning":    False,
+    "image_dir":            local_resource_path("icons"),
+    "progress_regex":       r"processing image[\ ]*(?P<current>\d+) \/[\ ]*(?P<total>\d+)",
+    "progress_expr":        "current / total * 100"
 }
 
 @Gooey(**gooey_options)
@@ -181,14 +184,17 @@ def main():
         "blendmode",
         default=stacker.BLEND_MODE_STACK,
         choices=[stacker.BLEND_MODE_STACK, stacker.BLEND_MODE_PEAK], 
-        help="blend mode"
+        help=blockstring_to_string("""
+        '{}' blends correctly exposed image to a long exposure image. 
+        '{}' blends underexposed images to a peaked image of burned parts.
+        """.format(stacker.BLEND_MODE_STACK, stacker.BLEND_MODE_PEAK))
     )
 
     parser.add_argument(
         "inputdir", 
         default=".",
         widget="DirChooser",
-        help="directory containing all input images"
+        help="input directory containing all images for stacking"
     )
 
     parser.add_argument(
@@ -306,9 +312,7 @@ def main():
     if config.SORT_IMAGES:
         input_images_stack = sorted(input_images_stack, key=_sort_helper)
 
-    # debug file sorting: 
-    # print(*input_images_stack, sep="\n")
-    # exit()
+    # config file loading
 
     stack.NAMING_PREFIX                 = config.NAMING_PREFIX
     stack.INPUT_DIRECTORY               = args.inputdir
@@ -326,7 +330,6 @@ def main():
     stack.BLEND_MODE                    = args.blendmode
 
     stack.ALIGN                         = config.ALIGN
-
     if config.ALIGN:
         aligner.TRANSLATION_DATA        = config.TRANSLATION_DATA
 
