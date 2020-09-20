@@ -52,5 +52,5 @@ exe = EXE(pyz,
 
 app = BUNDLE(exe,
           name='Compressor.app',
-          icon=None,
+          icon='icons/program_icon.icns',
           bundle_identifier=None)

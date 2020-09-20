@@ -19,3 +19,10 @@ sudo pip3 install pillow
 sudo pip3 install scipy
 sudo pip3 install matplotlib
 sudo pip3 install pyyaml
+
+## Gooey Debugging
+
+pyinstaller and gooey may behave weird sometimes and make debugging a hassle.
+To actually get an exception, build the .app bundle, cd to dist and run the
+application manually via  
+`./Compressor.app/Contents/MacOS/Compressor`

@@ -19,6 +19,13 @@ import matplotlib.pyplot as plt
 
 import exifread
 
+try:
+    import gi
+    gi.require_version('GExiv2', '0.10')
+    from gi.repository import GExiv2
+except ImportError as e:
+    self.log.error("Importing Exiv2 failed. No metadata can be written. Error: {}".format(e))
+
 """
     Stacker loads every image in INPUT_DIRECTORY,
     stacks it and writes output to RESULT_DIRECTORY.
@@ -129,16 +136,6 @@ class Stack(object):
         self.log.setLevel(logging.DEBUG)
         self.log.debug("init")
 
-        if self.WRITE_METADATA:
-            
-            try:
-                import gi
-                gi.require_version('GExiv2', '0.10')
-                from gi.repository import GExiv2
-            except Exception as e:
-                self.log.error("Importing Exiv2 failed. No metadata can be written. Error: {}".format(e))
-                self.WRITE_METADATA = False
-
 
     """
     After the class variables have been overwritten with the config from the compressor.py script,
@@ -150,6 +147,11 @@ class Stack(object):
             self.CLIPPING_VALUE = 2**8 - 1
         if self.CLIPPING_VALUE < 0 and self.EXTENSION == ".tif":
             self.CLIPPING_VALUE = 2**16 - 1
+
+        if self.WRITE_METADATA:
+            if "GExiv2" not in sys.modules:
+                self.log.error("Importing Exiv2 failed. No metadata can be written")
+                self.WRITE_METADATA = False
 
         # TODO: is ignored right now
         # self.PEAKING_THRESHOLD = int(self.CLIPPING_VALUE * self.PEAKING_PIXEL_THRESHOLD) # peaking includes pixel above 95% brightness
@@ -218,7 +220,7 @@ class Stack(object):
 
         overflow_perc = np.amax(t) / (np.iinfo(np.uint64).max / 100.0)
         if overflow_perc > 70:
-            print("tresor overflow status: {}%".format(round(overflow_perc, 2)))
+            selg.log.warning("tresor overflow status: {}%".format(round(overflow_perc, 2)))
 
         if self.APPLY_CURVE:
             if self.weighted_average_divider > 0:
@@ -269,7 +271,7 @@ class Stack(object):
             info["exposure_time"] = (latest_image[1] - earliest_image[1]).total_seconds()
         else: 
             info["exposure_time"] = 0
-            print("exposure_time could not be computed")
+            self.log.warning("exposure_time could not be computed")
 
         with open(os.path.join(self.INPUT_DIRECTORY, images[0]), 'rb') as f:
             metadata = exifread.process_file(f)
@@ -279,7 +281,7 @@ class Stack(object):
                 info["capture_date"] = latest_image[1]
             else:
                 info["capture_date"] = datetime.datetime.now()
-                print("exposure_time could not be computed")
+                self.log.warning("exposure_time could not be computed")
 
             # number of images
             info["exposure_count"] = len(images)
@@ -288,7 +290,7 @@ class Stack(object):
             value = metadata["EXIF FocalLength"].values[0]
             info["focal_length"] = value.num / value.den
             if info["focal_length"] < 0:
-                print("EXIF: focal length missing")
+                self.log.warning("EXIF: focal length missing")
                 info["focal_length"] = None
 
             # compressor version
@@ -298,7 +300,7 @@ class Stack(object):
                 if info["version"][-1] == "\n":
                     info["version"] = info["version"][:-1]
             except Exception as e:
-                print(str(e))
+                self.log.warning("compressor version not available. Error: {}".format(str(e)))
                 info["version"] = "not-available"
 
             # compressing date
@@ -427,11 +429,11 @@ class Stack(object):
                 # values.append((image, capturetime, self._intensity(shutter, aperture, iso), self._luminosity(image)))
                 values.append((image, capturetime, self._exposure_value(shutter, aperture, iso)))
 
-                print("{} | {} || {}".format(
-                    self._exposure_value(shutter, aperture, iso), 
-                    self._intensity(shutter, aperture, iso), 
-                    self._exposure_value(shutter, aperture, iso)-self._intensity(shutter, aperture, iso))
-                )
+                # self.log.debug("{} | {} || {}".format(
+                #     self._exposure_value(shutter, aperture, iso), 
+                #     self._intensity(shutter, aperture, iso), 
+                #     self._exposure_value(shutter, aperture, iso)-self._intensity(shutter, aperture, iso))
+                # )
 
         # normalize
         intensities = [x[2] for x in values]
@@ -505,9 +507,9 @@ class Stack(object):
         seconds = (datetime.datetime.now() - self.timer).total_seconds()
         if msg is not None:
             if seconds >= 0.1:
-                print(msg.format(seconds, "s"))  
+                self.log.debug(msg.format(seconds, "s"))  
             else: # milliseconds
-                print(msg.format(seconds * 1000, "ms"))  
+                self.log.debug(msg.format(seconds * 1000, "ms"))  
 
         self.timer = datetime.datetime.now()
 
@@ -609,14 +611,14 @@ class Stack(object):
 
                 # if f not in self.translation_data:
                 if warp_matrix_key is None:
-                    print("not aligned: translation data missing for {}".format(f))
+                    self.log.warning("not aligned: translation data missing for {}".format(f))
                 else:
 
                     matrix = np.matrix(self.translation_data[warp_matrix_key][0])
 
                     sum_abs_trans = abs(matrix[0, 2]) + abs(matrix[1, 2])
                     if sum_abs_trans > 100:
-                        print("\n   image {} not aligned: values too big: {:.2f}".format(f, sum_abs_trans))
+                        self.log.warning("\n   image {} not aligned: values too big: {:.2f}".format(f, sum_abs_trans))
                     else:
                         im = self.aligner.transform(im, matrix, im.shape)
                         self.stopwatch["transform_image"] += self.stop_time()
