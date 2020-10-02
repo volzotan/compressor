@@ -185,8 +185,8 @@ def main():
         default=stacker.BLEND_MODE_STACK,
         choices=[stacker.BLEND_MODE_STACK, stacker.BLEND_MODE_PEAK], 
         help=blockstring_to_string("""
-        '{}' blends correctly exposed image to a long exposure image. 
-        '{}' blends underexposed images to a peaked image of burned parts.
+        '{}' blends several correctly exposed images to a single long exposure image. 
+        '{}' blends several underexposed images to a peaked image showing the burned parts.
         """.format(stacker.BLEND_MODE_STACK, stacker.BLEND_MODE_PEAK))
     )
 
@@ -194,7 +194,7 @@ def main():
         "inputdir", 
         default=".",
         widget="DirChooser",
-        help="input directory containing all images for stacking"
+        help="input directory containing all images for processing"
     )
 
     parser.add_argument(
@@ -325,7 +325,6 @@ def main():
 
     stack.BASE_DIR                      = BASE_DIR
     stack.EXTENSION                     = config.EXTENSION
-    stack.PICKLE_NAME                   = config.PICKLE_NAME
 
     stack.BLEND_MODE                    = args.blendmode
 
@@ -342,7 +341,6 @@ def main():
 
     stack.SAVE_INTERVAL                 = config.SAVE_INTERVAL
     stack.INTERMEDIATE_SAVE_FORCE_JPEG  = config.INTERMEDIATE_SAVE_FORCE_JPEG
-    stack.PICKLE_INTERVAL               = config.PICKLE_INTERVAL
 
     stack.post_init()
     stack.print_config()

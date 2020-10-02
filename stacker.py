@@ -5,7 +5,6 @@ import support
 import json
 import sys
 import os
-import pickle
 import datetime
 import subprocess
 import logging
@@ -15,7 +14,6 @@ from fractions import Fraction
 from PIL import Image
 # import cv2
 import numpy as np
-import matplotlib.pyplot as plt
 
 import exifread
 
@@ -24,7 +22,8 @@ try:
     gi.require_version('GExiv2', '0.10')
     from gi.repository import GExiv2
 except ImportError as e:
-    self.log.error("Importing Exiv2 failed. No metadata can be written. Error: {}".format(e))
+    log = logging.getLogger("stacker")
+    log.error("Importing Exiv2 failed. No metadata can be written. Error: {}".format(e))
 
 """
     Stacker loads every image in INPUT_DIRECTORY,
@@ -77,8 +76,6 @@ class Stack(object):
 
     BASE_DIR                        = None
 
-    PICKLE_NAME                     = "stack.pickle"
-
     # Image blend mode (stack / peak)
     BLEND_MODE                      = BLEND_MODE_STACK
 
@@ -94,7 +91,6 @@ class Stack(object):
 
     WRITE_METADATA                  = True
     SAVE_INTERVAL                   = 15
-    PICKLE_INTERVAL                 = -1
 
     DEBUG                           = False
 
@@ -173,28 +169,17 @@ class Stack(object):
             ("   align:         {}", str(self.ALIGN)),
             ("   curve:         {}", str(self.APPLY_CURVE)),
             (" ", " "),
-            ("save interval:    {}", str(self.SAVE_INTERVAL)),
-            ("pickle interval:  {}", str(self.PICKLE_INTERVAL))
+            ("save interval:    {}", str(self.SAVE_INTERVAL))
         ]
 
         self.log.debug("CONFIG:")
         for line in config:
             if len(line) > 1:
-                self.log.debug(line[0].format(support.Color.BOLD + line[1] + support.Color.END))
+                self.log.debug(line[0].format(line[1]))
             else:
                 self.log.debug(line)
 
         self.log.debug("---------------------------------------")
-
-
-    def write_pickle(self, tresor, stacked_images):
-        self.log.debug("dump the pickle...")
-        pick = {}
-        pick["stacked_images"] = stacked_images
-        pick["tresor"]         = tresor
-
-        pickle.dump(pick, open(self.PICKLE_NAME, "wb"))
-        del pick
 
 
     def save(self, fixed_name=None, force_jpeg=False):
@@ -478,6 +463,9 @@ class Stack(object):
 
 
     def display_curve(self, curve):
+        
+        import matplotlib.pyplot as plt
+
         dates = [i["time"] for i in curve]
         values_exif = [i["absolute_brightness"] for i in curve]
         values_luminosity = [i["EV"] for i in curve]
@@ -652,16 +640,6 @@ class Stack(object):
 
         self.stacked_images.append(f)
 
-        # TODO: limit currently disabled because this piece of code is not running directly in a loop anymore
-        # if self.counter >= self.LIMIT:
-        #     if self.PICKLE_INTERVAL > 0:
-        #         self.write_pickle(self.tresor, self.stacked_images)
-        #     break
-
-        if self.PICKLE_INTERVAL > 0 and self.counter % self.PICKLE_INTERVAL == 0:
-            self.write_pickle(tresor, stacked_images)
-            self.reset_timer()
-
         if self.SAVE_INTERVAL > 0 and self.counter % self.SAVE_INTERVAL == 0:
             self.save(force_jpeg=self.INTERMEDIATE_SAVE_FORCE_JPEG)
 
@@ -680,17 +658,6 @@ class Stack(object):
 
         self.starttime = datetime.datetime.now()
         self.timer = datetime.datetime.now()
-
-        # load pickle and init variables
-        try:
-            pick = pickle.load(open(self.PICKLE_NAME, "rb"))
-            self.stacked_images = pick["stacked_images"]
-            self.tresor = pick["tresor"]
-            self.log.info("pickle loaded. resume with {} images".format(len(stacked_images)))
-        except Exception as e:
-            self.log.error(str(e))
-
-        self.stop_time("pickle loading: {0:.3f}{1}")
 
         self.LIMIT = len(self.input_images)
 
