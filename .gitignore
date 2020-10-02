@@ -3,3 +3,6 @@ images
 translation_data.json
 aligned
 *.pyc
+
+build/**
+dist/**
